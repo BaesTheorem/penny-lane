@@ -52,6 +52,7 @@ class Observation:
     model: str = ""
     url: str = ""
     dept: str = ""
+    category: str = ""
     ts: float = field(default_factory=time.time)
     raw: dict = field(default_factory=dict)
 

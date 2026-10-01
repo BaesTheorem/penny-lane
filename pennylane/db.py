@@ -15,6 +15,7 @@ import time
 from contextlib import contextmanager
 
 from . import config
+from .classify import classify
 from .retailers.base import Observation, Store
 
 SCHEMA = """
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS stores (
   PRIMARY KEY (retailer, store_id));
 CREATE TABLE IF NOT EXISTS items (
   retailer TEXT NOT NULL, item_id TEXT NOT NULL, upc TEXT, sku TEXT, model TEXT,
-  name TEXT, brand TEXT, url TEXT, dept TEXT, first_seen REAL, last_seen REAL,
+  name TEXT, brand TEXT, url TEXT, dept TEXT, category TEXT, ctype TEXT, first_seen REAL, last_seen REAL,
   PRIMARY KEY (retailer, item_id));
 CREATE INDEX IF NOT EXISTS items_upc ON items(upc);
 CREATE INDEX IF NOT EXISTS items_sku ON items(retailer, sku);
@@ -39,7 +40,7 @@ CREATE INDEX IF NOT EXISTS obs_ts ON observations(ts);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY, source TEXT NOT NULL, retailer TEXT, item_id TEXT,
   sku TEXT, upc TEXT, name TEXT, price REAL, retail REAL, reported_at REAL, url TEXT,
-  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE);
+  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE, ctype TEXT);
 CREATE INDEX IF NOT EXISTS reports_item ON reports(retailer, item_id);
 CREATE INDEX IF NOT EXISTS reports_upc ON reports(upc);
 CREATE TABLE IF NOT EXISTS predictions (
@@ -80,6 +81,13 @@ def _migrate(conn) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
     if "retail" not in cols:
         conn.execute("ALTER TABLE reports ADD COLUMN retail REAL")
+    if "ctype" not in cols:
+        conn.execute("ALTER TABLE reports ADD COLUMN ctype TEXT")
+    icols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
+    for col in ("category", "ctype"):
+        if col not in icols:
+            conn.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS items_ctype ON items(ctype)")
     conn.commit()
 
 
@@ -113,16 +121,20 @@ def upsert_store(s: Store, watched: bool | None = None) -> None:
 def record(obs: Observation) -> None:
     """Record one observation and refresh the item's identity row."""
     with tx() as c:
+        ctype = classify(obs.name, obs.category, obs.retailer)
         c.execute(
-            """INSERT INTO items(retailer,item_id,upc,sku,model,name,brand,url,dept,first_seen,last_seen)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO items(retailer,item_id,upc,sku,model,name,brand,url,dept,category,ctype,first_seen,last_seen)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(retailer,item_id) DO UPDATE SET
                upc=COALESCE(NULLIF(excluded.upc,''),items.upc), sku=COALESCE(NULLIF(excluded.sku,''),items.sku),
                model=COALESCE(NULLIF(excluded.model,''),items.model), name=COALESCE(NULLIF(excluded.name,''),items.name),
                brand=COALESCE(NULLIF(excluded.brand,''),items.brand), url=COALESCE(NULLIF(excluded.url,''),items.url),
-               dept=COALESCE(NULLIF(excluded.dept,''),items.dept), last_seen=excluded.last_seen""",
+               dept=COALESCE(NULLIF(excluded.dept,''),items.dept),
+               category=COALESCE(NULLIF(excluded.category,''),items.category),
+               ctype=CASE WHEN excluded.category<>'' OR items.ctype IS NULL OR items.ctype IN ('other','tools') THEN excluded.ctype ELSE items.ctype END,
+               last_seen=excluded.last_seen""",
             (obs.retailer, obs.item_id, obs.upc, obs.sku, obs.model, obs.name, obs.brand, obs.url,
-             obs.dept, obs.ts, obs.ts))
+             obs.dept, obs.category, ctype, obs.ts, obs.ts))
         c.execute(
             """INSERT INTO observations(retailer,item_id,store_id,ts,price,original,clearance_price,
                promo,qty,in_stock,discontinued,online_status,store_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -137,10 +149,10 @@ def add_report(source: str, key: str, **f) -> bool:
     with tx() as c:
         cur = c.execute(
             """INSERT OR IGNORE INTO reports(source,key,retailer,item_id,sku,upc,name,price,retail,reported_at,
-               url,store_hint,fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               url,store_hint,fetched_at,ctype) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (source, key, f.get("retailer"), f.get("item_id"), f.get("sku"), f.get("upc"),
              f.get("name"), f.get("price"), f.get("retail"), f.get("reported_at"), f.get("url"),
-             f.get("store_hint"), time.time()))
+             f.get("store_hint"), time.time(), classify(f.get("name") or "", "", f.get("retailer") or "")))
         if cur.rowcount == 0 and f.get("retail") is not None:
             c.execute("UPDATE reports SET retail=? WHERE key=? AND retail IS NULL", (f.get("retail"), key))
         return cur.rowcount > 0
@@ -302,3 +314,18 @@ def hot_items(retailer, min_msrp: float, min_score: int) -> list[str]:
                          AND ((price<=0.01 AND COALESCE(qty,0)>0) OR COALESCE(original,0)>=?)""", (min_msrp,)):
             ids.add(r["item_id"])
     return sorted(ids)
+
+
+def reclassify_all() -> dict:
+    """Recompute ctype for every item and report (after a rule change)."""
+    n = 0
+    with tx() as c:
+        for r in c.execute("SELECT retailer, item_id, name, category FROM items").fetchall():
+            c.execute("UPDATE items SET ctype=? WHERE retailer=? AND item_id=?",
+                      (classify(r["name"] or "", r["category"] or "", r["retailer"]), r["retailer"], r["item_id"]))
+            n += 1
+        m = 0
+        for r in c.execute("SELECT id, retailer, name FROM reports").fetchall():
+            c.execute("UPDATE reports SET ctype=? WHERE id=?", (classify(r["name"] or "", "", r["retailer"] or ""), r["id"]))
+            m += 1
+    return {"items": n, "reports": m}

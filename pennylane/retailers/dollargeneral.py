@@ -94,6 +94,9 @@ class DollarGeneral(Retailer):
         qty = p.get("availableStockStore")
         offers = "; ".join(f"{o.get('method', '')} {o.get('savings', '')}".strip() for o in p.get("offers") or [])
         upc = str(p.get("salsifyUpc") or p.get("Upc") or "")
+        hier = p.get("categoryHierarchies") or []
+        category = (hier[0] if isinstance(hier, list) and hier else "") or (p.get("category") or "").split("|")[0] \
+            or (p.get("pogPrimaryCategory") or "")
         return Observation(
             retailer=self.key, item_id=upc.lstrip("0") or upc, store_id=str(store_id),
             price=0.01 if penny else final, original=orig if orig not in (None, final) else None,
@@ -104,7 +107,7 @@ class DollarGeneral(Retailer):
             online_status=str(p.get("isSellable")) if p.get("isSellable") is not None else None,
             name=p.get("description") or p.get("productName") or "",
             brand=p.get("brand") or "", upc=upc.zfill(12) if upc else "", sku=str(p.get("sku") or ""),
-            url=self.item_url(upc.lstrip("0") or upc), raw=p)
+            url=self.item_url(upc.lstrip("0") or upc), category=category, raw=p)
 
 
 def _geocode_zip(zip_code: str) -> tuple[float, float]:

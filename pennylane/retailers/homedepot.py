@@ -209,4 +209,6 @@ class HomeDepot(Retailer):
             name=ident.get("productLabel") or "", brand=ident.get("brandName") or "",
             upc=ident.get("upc") or ident.get("upcGtin13") or "", sku=ident.get("storeSkuNumber") or "",
             model=ident.get("modelNumber") or "", url=url,
-            dept=str(info.get("productDepartment") or ""), raw=p)
+            dept=str(info.get("productDepartment") or ""),
+            category=str(info.get("productDepartment") or "") if not str(info.get("productDepartment") or "").isdigit() else "",
+            raw=p)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-from . import config, db, detect, scan
+from . import classify, config, db, detect, scan
 from .retailers import registry
 from .retailers.base import LaneBlocked, LaneRetry
 
@@ -66,7 +66,8 @@ def predictions():
     order = {"score": "p.score DESC, msrp DESC", "msrp": "msrp DESC, p.score DESC",
              "savings": "(COALESCE(msrp,0) - COALESCE(o.clearance_price, o.price, 0)) DESC, p.score DESC",
              "recent": "o.ts DESC"}.get(sort, "p.score DESC")
-    sql = """SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, s.name AS store_name,
+    ctype = request.args.get("ctype")
+    sql = """SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
                     o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
                     COALESCE(o.original,
                              (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
@@ -88,6 +89,9 @@ def predictions():
     if stage:
         sql += " AND p.stage=?"
         params.append(stage)
+    if ctype:
+        sql += " AND i.ctype=?"
+        params.append(ctype)
     sql += f" ORDER BY {order} LIMIT ?"
     params.append(limit)
     return jsonify(db.rows(sql, params))
@@ -115,8 +119,12 @@ def reports():
     retailer = request.args.get("retailer")
     days = int(request.args.get("days") or 45)
     rows = _merge_reports(db.report_items(retailer, since_days=days))
+    ctype = request.args.get("ctype")
+    if ctype:
+        rows = [r for r in rows if _report_ctype(r) == ctype]
     # Attach what we know locally: any observation at a watched store.
     for r in rows:
+        r["ctype"] = _report_ctype(r)
         r["local"] = _local_state(r)
         if r.get("retail") is None:
             r["retail"] = next((o.get("original") for o in r["local"] if o.get("original")), None)
@@ -126,6 +134,26 @@ def reports():
     elif sort == "stocked":
         rows.sort(key=lambda r: -sum((o.get("qty") or 0) for o in r["local"]))
     return jsonify(rows)
+
+
+def _report_ctype(rep: dict) -> str:
+    """The item's type when we have the item (lane category beats name), else the name-based guess."""
+    retailer = rep.get("retailer")
+    if rep.get("item_id"):
+        it = db.item(retailer, rep["item_id"])
+        if it and it.get("ctype"):
+            return it["ctype"]
+    if rep.get("upc"):
+        for it in db.items_by_upc(rep["upc"]):
+            if it["retailer"] == retailer and it.get("ctype"):
+                return it["ctype"]
+    return rep.get("ctype") or classify.classify(rep.get("name") or "", "", retailer or "")
+
+
+@app.get("/api/types")
+def types():
+    counts = {r["ctype"]: r["n"] for r in db.rows("SELECT ctype, COUNT(*) n FROM items GROUP BY ctype")}
+    return jsonify([{"key": k, "label": v, "items": counts.get(k, 0)} for k, v in classify.TYPES])
 
 
 def _merge_reports(rows: list[dict]) -> list[dict]:

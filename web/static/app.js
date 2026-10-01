@@ -7,6 +7,7 @@
   // The MD3 scheme is baked into app.css (seed #b86a2b); Beer only needs the mode.
   if (window.ui) ui("mode", "light");
   const LABELS = { homedepot: "Home Depot", lowes: "Lowe's", dollargeneral: "Dollar General", walmart: "Walmart" };
+  const TYPES = {};
 
   const api = async (path, body) => {
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -47,6 +48,9 @@
     $("#unseen").classList.toggle("hidden", !unseen);
     const retailers = [...new Set(state.stores.map((s) => s.retailer))];
     for (const sel of ["#fRetailer", "#scanRetailer", "#lRetailer"]) fillSelect(sel, retailers.map((r) => [r, LABELS[r] || r]), "All retailers");
+    const types = await api("/api/types").catch(() => []);
+    for (const t of types) TYPES[t.key] = t.label;
+    for (const sel of ["#fType", "#lType"]) fillSelect(sel, types.filter((t) => t.items || t.key === "food").map((t) => [t.key, `${t.label}${t.items ? ` (${t.items})` : ""}`]), "Any type");
     for (const sel of ["#fStore", "#scanStore"]) fillSelect(sel, state.stores.map((s) => [s.store_id, `${LABELS[s.retailer] || s.retailer}: ${s.name}`]), sel === "#fStore" ? "All stores" : "All watched stores");
     const c = state.status.counts;
     const running = Object.entries(state.status.jobs || {}).filter(([, j]) => j.running).map(([k]) => k);
@@ -74,12 +78,13 @@
     if ($("#fRetailer").value) q.set("retailer", $("#fRetailer").value);
     if ($("#fStore").value) q.set("store", $("#fStore").value);
     if ($("#fStage").value) q.set("stage", $("#fStage").value);
+    if ($("#fType").value) q.set("ctype", $("#fType").value);
     q.set("min_score", "25");
     q.set("sort", $("#fSort").value || "score");
     const rows = await api(`/api/predictions?${q}`);
     $("#ranked").innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty"><i>search</i>Nothing scored yet. Run <b>Verify</b> or a <b>Sweep</b> from Settings.</div>`;
   }
-  ["#fRetailer", "#fStore", "#fStage", "#fSort"].forEach((s) => $(s).addEventListener("change", loadHome));
+  ["#fRetailer", "#fStore", "#fStage", "#fSort", "#fType"].forEach((s) => $(s).addEventListener("change", loadHome));
 
   function card(r) {
     const eff = r.clearance_price ?? r.price;
@@ -90,6 +95,7 @@
         <span class="price ${eff != null && eff <= 0.01 ? "penny" : ""}">${money(eff)}</span>${r.msrp && r.msrp !== eff ? `<span class="strike" title="MSRP">${money(r.msrp)}</span>` : ""}
         · qty ${r.qty ?? "?"} · ${esc(ago(r.observed_at))}
         ${r.store_status === "CLEARANCE" ? '<span class="tag clr">CLEARANCE</span>' : ""}${r.store_status === "PENNY" ? '<span class="tag penny">PENNY</span>' : ""}
+        ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
         ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""}</div>
       <div class="reasons">${esc(reasons.slice(0, 4).join(" · "))}</div></article>`;
   }
@@ -162,6 +168,7 @@
   async function loadLists() {
     const q = new URLSearchParams();
     if ($("#lRetailer").value) q.set("retailer", $("#lRetailer").value);
+    if ($("#lType").value) q.set("ctype", $("#lType").value);
     q.set("sort", $("#lSort").value || "recent");
     const rows = await api(`/api/reports?${q}`);
     $("#lists").innerHTML = rows.slice(0, 400).map((r) => {
@@ -170,12 +177,12 @@
       return `<article class="card" ${link}>
         <div class="title">${esc(r.name || r.sku || r.upc)}</div>
         <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))}${r.retail ? ` · <span title="MSRP">MSRP ${money(r.retail)}</span>` : ""}
+          ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
           ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""} ${esc(r.store_hint || "")}</div>
         <div class="reasons">${local || '<span class="muted">not checked at your stores yet</span>'}</div></article>`;
     }).join("") || `<div class="empty"><i>list_alt</i>No reports pulled yet.</div>`;
   }
-  $("#lRetailer").addEventListener("change", loadLists);
-  $("#lSort").addEventListener("change", loadLists);
+  ["#lRetailer", "#lSort", "#lType"].forEach((s) => $(s).addEventListener("change", loadLists));
   $("#runSources").addEventListener("click", () => runJob("sources"));
   $("#runVerify").addEventListener("click", () => runJob("verify"));
   async function runJob(job, extra = "") {
