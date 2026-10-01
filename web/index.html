@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Penny Lane</title>
+<link rel="stylesheet" href="/static/vendor/beer.min.css">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/icon.png">
+</head>
+<body class="dark">
+<header class="fixed surface-container">
+  <nav>
+    <a href="#home" data-tab="home" class="circle transparent"><i>home</i></a>
+    <h6 class="max">Penny Lane</h6>
+    <span id="unseen" class="chip small primary hidden">0</span>
+    <button id="scanBtn" class="circle transparent" title="Scan a barcode"><i>barcode_scanner</i></button>
+    <button id="refreshBtn" class="circle transparent" title="Refresh"><i>refresh</i></button>
+  </nav>
+</header>
+
+<main class="responsive">
+  <section id="tab-home" class="tab">
+    <div id="statusLine" class="small-text muted"></div>
+    <div id="alerts"></div>
+    <h5>Closest to a penny</h5>
+    <div class="row wrap" id="filters">
+      <select id="fRetailer" class="field small border"><option value="">All retailers</option></select>
+      <select id="fStore" class="field small border"><option value="">All stores</option></select>
+      <select id="fStage" class="field small border">
+        <option value="">Any stage</option><option value="penny">penny</option><option value="imminent">imminent</option>
+        <option value="late">late</option><option value="early">early</option>
+      </select>
+    </div>
+    <div id="ranked"></div>
+  </section>
+
+  <section id="tab-scan" class="tab hidden">
+    <h5>Scan</h5>
+    <p class="muted small-text">Type or scan a UPC, a Home Depot SKU from the yellow tag, or a Lowe's item number. The phone app feeds this box from the camera.</p>
+    <div class="field border round-0">
+      <input id="scanInput" inputmode="numeric" placeholder="UPC / SKU / item number" autocomplete="off">
+    </div>
+    <div class="row">
+      <select id="scanRetailer" class="field small border"><option value="">Any retailer</option></select>
+      <select id="scanStore" class="field small border"><option value="">All watched stores</option></select>
+      <button id="scanGo" class="border">Look up</button>
+    </div>
+    <div id="scanOut"></div>
+  </section>
+
+  <section id="tab-lists" class="tab hidden">
+    <h5>Community lists</h5>
+    <div class="row wrap">
+      <select id="lRetailer" class="field small border"><option value="">All retailers</option></select>
+      <button id="runSources" class="border small">Pull lists now</button>
+      <button id="runVerify" class="border small">Verify at my stores</button>
+    </div>
+    <div id="lists"></div>
+  </section>
+
+  <section id="tab-item" class="tab hidden"><div id="itemView"></div></section>
+
+  <section id="tab-settings" class="tab hidden">
+    <h5>Settings</h5>
+    <div id="settings"></div>
+  </section>
+</main>
+
+<nav class="bottom surface-container">
+  <a data-tab="home"><i>home</i><div>Home</div></a>
+  <a data-tab="scan"><i>barcode_scanner</i><div>Scan</div></a>
+  <a data-tab="lists"><i>list_alt</i><div>Lists</div></a>
+  <a data-tab="settings"><i>settings</i><div>Settings</div></a>
+</nav>
+<div id="snack" class="snackbar"></div>
+<script src="/static/vendor/beer.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

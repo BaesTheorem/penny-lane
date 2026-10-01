@@ -1,0 +1,30 @@
+{
+  "zip": "00000",
+  "radius_miles": 25,
+  "retailers": {
+    "homedepot": {
+      "enabled": true,
+      "stores": []
+    },
+    "walmart": {
+      "enabled": true,
+      "stores": []
+    },
+    "lowes": {
+      "enabled": true,
+      "stores": []
+    },
+    "dollargeneral": {
+      "enabled": true,
+      "stores": []
+    }
+  },
+  "notify": {
+    "enabled": true,
+    "min_score": 70
+  },
+  "sweep": {
+    "homedepot_pages": 400,
+    "request_gap_s": 0.6
+  }
+}

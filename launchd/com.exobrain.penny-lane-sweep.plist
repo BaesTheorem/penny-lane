@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.exobrain.penny-lane-sweep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexhedtke/Documents/penny-lane/bin/penny</string>
+    <string>sweep</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/alexhedtke/Documents/penny-lane</string>
+  <!-- The Home Depot in-store Special Values walk: ~320 requests per store at
+       0.6 s. Nightly, so the markdown cadence gets one sample a day. -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>10</integer></dict>
+  <key>StandardOutPath</key><string>/Users/alexhedtke/Library/Logs/exobrain/penny-lane-sweep.log</string>
+  <key>StandardErrorPath</key><string>/Users/alexhedtke/Library/Logs/exobrain/penny-lane-sweep.log</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+</dict>
+</plist>

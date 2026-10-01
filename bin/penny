@@ -1,0 +1,21 @@
+#!/bin/zsh
+# penny: the Penny Lane CLI.
+#
+#   penny serve                 run the API + web UI on :5033 (launchd does this)
+#   penny stores|sources|verify|sweep|watch|predict|all [--sweep] [--pages N]
+#   penny lookup <retailer> <item_id> [store_id]     live per-store price
+#   penny upc <upc> [store_id]                       resolve a barcode (DG live, others via index)
+#   penny top [store_id]                             ranked predictions at watched stores
+#   penny open                                       open the web UI
+HERE="${0:A:h:h}"
+PY="$HERE/.venv/bin/python"
+cd "$HERE" || exit 1
+case "${1:-}" in
+  serve) exec "$PY" -m pennylane.server ;;
+  stores|sources|verify|sweep|watch|predict|all) exec "$PY" -m pennylane.scan "$@" ;;
+  lookup) shift; exec "$PY" -m pennylane.cli lookup "$@" ;;
+  upc) shift; exec "$PY" -m pennylane.cli upc "$@" ;;
+  top) shift; exec "$PY" -m pennylane.cli top "$@" ;;
+  open) exec open "http://127.0.0.1:${PENNYLANE_PORT:-5033}/" ;;
+  *) sed -n '2,10p' "$0"; exit 2 ;;
+esac
