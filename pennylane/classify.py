@@ -55,6 +55,8 @@ PATH_RULES = [
 
 # Name keywords (word-boundary regex) -> type, checked in order; first hit wins.
 NAME_RULES = [
+    # Textiles named after food ("Ice Cream Mat") are home goods.
+    ("home", r"\b(mats?|rugs?|towels?|pillows?|blankets?|throws?|curtains?)\b"),
     ("beauty", r"\b(shampoo|conditioner|hair color|hair dye|lightening|bond care|ointment|cocoa butter|shea butter|body (oil|butter|cream|lotion|mist)|night cream|day cream|moisture|hydrating|dark and lovely|relaxer|skin hydrating|overnight mask|curling|flat iron|ceramic (barrel|iron)|lip gloss|lip balm|loose powder|setting powder|oil-control|primer stick|makeup|eyeshadow|brow|lashes|lipstick|mascara|eyeliner|foundation|concealer|blush|nail polish|lotion|moisturiz|body wash|deodorant|antiperspirant|razor|shave|cologne|perfume|body spray|face wash|cleanser|serum|skin therapy|cocoa butter|micellar|toothpaste|toothbrush|mouthwash|floss|hair spray|gel|pomade|curl|keratin|bleach kit|acne|sunscreen|lip balm|cotton rounds?)\b"),
     ("health", r"\b(vitamin|supplement|ibuprofen|acetaminophen|tylenol|advil|aleve|allergy|antacid|tums|pepto|cold & flu|cough|nasal|thermometer|bandage|band-aid|first aid|melatonin|probiotic|laxative|eye drops?|contact lens|pregnancy test|glucose|blood pressure)\b"),
     ("baby", r"\b(diapers?|wipes|pacifier|sippy|onesie|baby|infant|toddler|formula|teether)\b"),
