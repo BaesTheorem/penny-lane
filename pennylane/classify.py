@@ -87,7 +87,11 @@ def classify(name: str = "", category: str = "", retailer: str = "") -> str:
             if any(k in cat for k in keys):
                 return t
     n = f" {name or ''} "
+    # Hardware chains sell no food, and "water", "bar" and "ice" are everywhere there.
+    skip_food = retailer in ("homedepot", "lowes")
     for t, rx in _COMPILED:
+        if skip_food and t == "food":
+            continue
         if rx.search(n):
             return t
     if retailer in ("homedepot", "lowes"):
