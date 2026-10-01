@@ -100,6 +100,14 @@ In the store: tap the barcode icon, point at the shelf tag or the box. The
 code goes to `/api/lookup`, which resolves it (local index, community
 reports, or Dollar General live) and checks every watched store.
 
+## Design
+
+The web UI is Material 3 through Beer CSS in a soft, bright register: light tonal
+surfaces, large radii, low elevation, Material Symbols Rounded, and an MD3 scheme
+computed once from the copper seed `#b86a2b` with Google's material-color-utilities
+and baked into `web/static/app.css` (a dark set is included for a future toggle).
+`beer.min.js` is an ES module: load it with `type="module"`.
+
 ## Privacy
 
 `config.json` (home zip, store ids), `data/` (database, remote token) and

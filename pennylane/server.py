@@ -339,7 +339,9 @@ def qr():
     if not is_local(request):
         abort(403)
     buf = io.BytesIO()
-    segno.make(request.args.get("d") or "", error="m").save(buf, kind="png", scale=6, dark="#e3e2e6", light="#121316")
+    light = request.args.get("light")
+    segno.make(request.args.get("d") or "", error="m").save(
+        buf, kind="png", scale=6, dark="#3a2a1e" if light else "#e3e2e6", light="#fff8f3" if light else "#121316")
     from flask import Response
     return Response(buf.getvalue(), mimetype="image/png")
 

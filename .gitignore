@@ -4,6 +4,7 @@ data/
 __pycache__/
 *.pyc
 web/static/vendor/*.ttf
+web/static/vendor/*.woff2
 ios/build/
 ios/*.xcodeproj
 ios/Config/Signing.xcconfig
