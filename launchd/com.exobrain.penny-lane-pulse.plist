@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.exobrain.penny-lane-pulse</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/alexhedtke/Documents/penny-lane/bin/penny</string>
+    <string>pulse</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/alexhedtke/Documents/penny-lane</string>
+  <!-- Hourly re-check of the hot set (reported items worth >= $100 and anything
+       scoring high). ~50 Home Depot requests + the DG UPC list per run. -->
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/alexhedtke/Library/Logs/exobrain/penny-lane-pulse.log</string>
+  <key>StandardErrorPath</key><string>/Users/alexhedtke/Library/Logs/exobrain/penny-lane-pulse.log</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+</dict>
+</plist>

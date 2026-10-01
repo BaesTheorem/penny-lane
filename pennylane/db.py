@@ -259,3 +259,36 @@ def report_items(retailer=None, since_days=60) -> list[dict]:
         return rows("SELECT * FROM reports WHERE retailer=? AND fetched_at>? ORDER BY reported_at DESC",
                     (retailer, since))
     return rows("SELECT * FROM reports WHERE fetched_at>? ORDER BY reported_at DESC", (since,))
+
+
+def msrp(retailer, item_id, latest: dict | None = None) -> float | None:
+    """Best known full price: the lane's original, else the community retail."""
+    if latest and latest.get("original"):
+        return float(latest["original"])
+    it = item(retailer, item_id) or {}
+    row = one("""SELECT MAX(retail) m FROM reports WHERE retailer=? AND (item_id=? OR (?<>'' AND sku=?) OR (?<>'' AND upc=?))""",
+              (retailer, item_id, it.get("sku") or "", it.get("sku") or "", it.get("upc") or "", it.get("upc") or ""))
+    if row and row.get("m"):
+        return float(row["m"])
+    if latest and latest.get("price") and latest["price"] > 0.01:
+        return float(latest["price"])
+    return None
+
+
+def hot_items(retailer, min_msrp: float, min_score: int) -> list[str]:
+    """Item ids worth re-checking often: community-reported with a retail at or
+    above the floor, plus anything already scoring above min_score anywhere."""
+    ids = {r["item_id"] for r in rows(
+        "SELECT DISTINCT item_id FROM reports WHERE retailer=? AND item_id<>'' AND COALESCE(retail,0)>=?",
+        (retailer, min_msrp))}
+    for r in rows("SELECT DISTINCT i.item_id FROM reports r JOIN items i ON i.retailer=r.retailer AND "
+                  "((r.sku<>'' AND i.sku=r.sku) OR (r.upc<>'' AND i.upc=r.upc)) WHERE r.retailer=? AND COALESCE(r.retail,0)>=?",
+                  (retailer, min_msrp)):
+        ids.add(r["item_id"])
+    for r in rows("SELECT DISTINCT item_id FROM predictions WHERE retailer=? AND score>=? AND stage<>'gone'",
+                  (retailer, min_score)):
+        ids.add(r["item_id"])
+    if retailer == "dollargeneral":
+        for r in rows("SELECT DISTINCT upc FROM reports WHERE retailer='dollargeneral' AND upc<>''"):
+            ids.add(r["upc"].lstrip("0"))
+    return sorted(ids)

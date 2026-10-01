@@ -36,7 +36,15 @@ Three parts:
    the first markdown, markdown steps seen, "gone online but still on the
    shelf", and community reports joined to local stock. Nothing on the shelf
    caps the score at 20. A register price of $0.01 on a stocked shelf is 100.
-5. **Alerts** go out through `mist-notify` (or your own hook in `scan._notify`).
+5. **Alerts**: a macOS banner for every new alert, and a **Discord DM the
+   moment a penny with MSRP at or above `notify.discord.min_msrp` (default
+   $100) is on a watched shelf**. MSRP is the lane's original price, else the
+   retail price the community feed recorded.
+6. **Pulse** (`bin/penny pulse`, hourly under launchd): re-checks the hot set
+   (reported items worth at least the floor, plus anything already scoring
+   50+) at every watched Home Depot and Dollar General, then re-scores. Lowe's
+   and Walmart are left out of the pulse because their request budgets cannot
+   take an hourly pass.
 
 ## Lane notes (probed 2026-09-30)
 
@@ -59,13 +67,14 @@ bin/penny stores                 # fetch stores near the zip; nearest 3 per lane
 bin/penny sources                # pull the community lists
 bin/penny verify                 # check every reported item at your stores
 bin/penny predict                # score + alert
+bin/penny pulse                  # hot-set re-check + score (hourly job)
 bin/penny serve                  # web UI on http://127.0.0.1:5033
 ```
 
 launchd: copy `launchd/*.plist` into `~/Library/LaunchAgents` (edit the paths)
 and `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`. The
 server job keeps the UI and tunnel up; the scan job runs `all` four times a
-day; the sweep job walks Home Depot nightly.
+day; the sweep job walks Home Depot nightly; the pulse job runs hourly.
 
 ## Phone access
 

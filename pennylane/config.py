@@ -28,7 +28,13 @@ DEFAULTS = {
         "dollargeneral": {"enabled": True, "stores": []},
     },
     "sources": {"enabled": True},
-    "notify": {"enabled": True, "min_score": 70},
+    "notify": {"enabled": True, "min_score": 70,
+               # Discord DM the moment a penny with MSRP >= min_msrp is on a watched shelf.
+               "discord": {"enabled": True, "min_msrp": 100, "token_file": "~/.claude/channels/discord/.env",
+                           "env_file": "~/Documents/Exobrain harness/.env"}},
+    # The hourly pulse re-checks the hot set: reported items worth >= pulse.min_msrp
+    # and anything already scored >= pulse.min_score, at every watched store.
+    "pulse": {"min_msrp": 100, "min_score": 50, "lanes": ["homedepot", "dollargeneral"]},
     "sweep": {"homedepot_pages": 400, "request_gap_s": 0.6},
 }
 

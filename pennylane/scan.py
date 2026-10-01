@@ -7,17 +7,19 @@
   sweep    walk the retailer's in-store clearance listing per watched store
   watch    refresh the user's watchlist at every watched store
   predict  score everything observed recently; raise alerts
+  pulse    hourly: re-check the hot set (reported, MSRP >= floor, or scoring
+           high) at every watched store, then predict; Discord DM on a penny
   all      sources, verify, watch, predict (sweep runs on --sweep)
 """
 
 from __future__ import annotations
 
 import logging
-import subprocess
 import sys
 import time
 
 from . import config, db, detect
+from . import notify as notify_mod
 from .retailers import registry
 from .retailers.base import LaneBlocked, LaneRetry
 from .sources import all_sources
@@ -174,28 +176,59 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
                 continue
             it = db.item(st["retailer"], r["item_id"]) or {}
             name = it.get("name") or r["item_id"]
-            msg = (f"{name} at {st['name']} ({st['retailer']}): score {r['score']}, {r['stage']}. "
-                   + "; ".join(r["reasons"][:4]))
+            full = db.msrp(st["retailer"], r["item_id"], r["latest"])
+            msg = (f"{name} at {st['name']} ({st['retailer']}): score {r['score']}, {r['stage']}"
+                   + (f", MSRP ${full:,.2f}" if full else "") + ". " + "; ".join(r["reasons"][:4]))
             db.add_alert(kind, st["retailer"], r["item_id"], st["store_id"], msg, r["score"])
             if notify and cfg["notify"].get("enabled", True):
-                _notify(kind, msg, it.get("url") or "", r)
+                notify_mod.banner("Penny on the shelf" if kind == "penny_on_shelf" else "Penny Lane: imminent",
+                                  msg, it.get("url") or "", "reasons: " + " | ".join(r["reasons"]))
+                floor = float((cfg["notify"].get("discord") or {}).get("min_msrp", 100))
+                if kind == "penny_on_shelf" and full is not None and full >= floor:
+                    lt = r["latest"]
+                    notify_mod.discord(
+                        f"**Penny on the shelf**: {name}\n{st['name']} ({_label(st['retailer'])}), "
+                        f"MSRP ${full:,.2f}, register ${lt.get('price', 0):.2f}, qty {lt.get('qty', '?')}"
+                        + (f"\nSKU {it['sku']}" if it.get("sku") else "") + (f" · UPC {it['upc']}" if it.get("upc") else "")
+                        + (f"\n{it['url']}" if it.get("url") else ""), cfg)
     return out
 
 
-def _notify(kind: str, msg: str, url: str, r: dict) -> None:
-    title = "Penny on the shelf" if kind == "penny_on_shelf" else "Penny Lane: imminent"
-    cmd = [f"{HARNESS}/mist-voice/bin/mist-notify", msg, title, "Glass"]
-    if url:
-        cmd.append(url)
-    cmd += ["--context", "reasons: " + " | ".join(r["reasons"]), "--group", "penny-lane"]
-    try:
-        subprocess.run(cmd, timeout=15, check=False, capture_output=True)
-    except Exception as e:  # noqa: BLE001
-        log.warning("notify failed: %s", e)
+def _label(key: str) -> str:
+    lane = registry().get(key)
+    return lane.label if lane else key
+
+
+def job_pulse(cfg: dict) -> dict:
+    """Hourly: re-check the hot set at every watched store, then score and
+    alert. Lowe's and Walmart stay out (their request budgets cannot take it)."""
+    out = {}
+    p = cfg.get("pulse") or {}
+    for key in p.get("lanes") or ["homedepot", "dollargeneral"]:
+        lane = registry().get(key)
+        stores = db.watched_stores(key)
+        if not lane or not stores:
+            continue
+        ids = db.hot_items(key, float(p.get("min_msrp", 100)), int(p.get("min_score", 50)))
+        n = 0
+        for st in stores:
+            try:
+                for obs in lane.lookup_many(ids, st["store_id"]):
+                    db.record(obs)
+                    n += 1
+            except LaneBlocked as e:
+                log.warning("%s pulse blocked at %s: %s", key, st["store_id"], e)
+                break
+            except LaneRetry as e:
+                log.warning("%s pulse retry at %s: %s", key, st["store_id"], e)
+            time.sleep(lane.gap)
+        out[key] = f"{len(ids)} hot items x {len(stores)} stores, {n} observations"
+    out["predict"] = job_predict(cfg)
+    return out
 
 
 JOBS = {"stores": job_stores, "sources": job_sources, "verify": job_verify, "sweep": job_sweep,
-        "watch": job_watch, "predict": job_predict}
+        "watch": job_watch, "predict": job_predict, "pulse": job_pulse}
 
 
 def run(job: str, **kw) -> dict:
