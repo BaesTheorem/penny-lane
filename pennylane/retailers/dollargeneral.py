@@ -17,7 +17,7 @@ import time
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
 
 BASE = "https://dggo.dollargeneral.com/omni/api"
 H = {"Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
@@ -35,6 +35,7 @@ class DollarGeneral(Retailer):
         self.hdr = None
         self.hdr_at = 0.0
 
+    @transport
     def _auth(self) -> dict:
         if self.hdr and time.time() - self.hdr_at < 50 * 60:
             return self.hdr
@@ -52,6 +53,7 @@ class DollarGeneral(Retailer):
         self.hdr_at = time.time()
         return self.hdr
 
+    @transport
     def _post(self, path: str, body: dict) -> dict | list:
         r = self.s.post(BASE + path, headers=self._auth(), json=body, timeout=25)
         if r.status_code in (403, 429):

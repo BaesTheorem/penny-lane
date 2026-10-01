@@ -16,7 +16,7 @@ import re
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
 
 WPD = "https://www.lowes.com/wpd/{item}/productdetail/{store}/Guest"
 SITEMAP = "https://www.lowes.com/sitemap/store0.xml"
@@ -36,6 +36,7 @@ class Lowes(Retailer):
         self._warm = False
         self._store = None
 
+    @transport
     def _prep(self, store_id: str) -> None:
         if not self._warm:
             r = self.s.get(WPD.format(item="1000381989", store="1539"), headers=JH, timeout=25)
@@ -46,6 +47,7 @@ class Lowes(Retailer):
             self.s.cookies.set("sn", str(store_id), domain=".lowes.com")
             self._store = store_id
 
+    @transport
     def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
         """The sitemap lists every store with state and city, no distance.
         Filter to the two states around the zip; distance stays None and the
@@ -61,6 +63,7 @@ class Lowes(Retailer):
                                  state=st))
         return out
 
+    @transport
     def lookup(self, item_id: str, store_id: str) -> Observation | None:
         self._prep(store_id)
         r = self.s.get(WPD.format(item=item_id, store=store_id), headers=JH, timeout=25)

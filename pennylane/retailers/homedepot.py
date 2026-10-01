@@ -15,7 +15,7 @@ import time
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
 
 GW = "https://www.homedepot.com/federation-gateway/graphql?opname="
 STORE_SEARCH = "https://www.homedepot.com/StoreSearchServices/v2/storesearch"
@@ -75,6 +75,7 @@ class HomeDepot(Retailer):
         self.s = requests.Session(impersonate="chrome")
 
     # ---- transport ----
+    @transport
     def gql(self, op: str, query: str, variables: dict, tries: int = 4) -> dict:
         # 206 is Home Depot's own upstream hiccup (AkamaiGHost "Generic errors");
         # it clears within seconds to minutes, so wait it out before giving up.
@@ -97,6 +98,7 @@ class HomeDepot(Retailer):
         return body["data"]
 
     # ---- adapter ----
+    @transport
     def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
         # GraphQL first (it rides the 206 retry); the REST locator is the fallback.
         try:

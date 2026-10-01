@@ -9,7 +9,12 @@ clearance, and how many are on the shelf. Adapters never write to the DB;
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from typing import ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 @dataclass
@@ -62,6 +67,18 @@ class LaneBlocked(Exception):
 
 class LaneRetry(Exception):
     """A transient upstream error (Home Depot's Akamai 206). Retry later."""
+
+
+def transport(fn: Callable[P, R]) -> Callable[P, R]:
+    """Turn curl/network failures (timeouts, resets, DNS) into LaneRetry so a
+    job records the miss and moves on instead of dying mid-run."""
+    def wrapped(*a: P.args, **kw: P.kwargs) -> R:
+        from curl_cffi.requests.exceptions import RequestException
+        try:
+            return fn(*a, **kw)
+        except RequestException as e:
+            raise LaneRetry(f"transport: {str(e)[:120]}") from e
+    return wrapped
 
 
 class Retailer:

@@ -18,7 +18,7 @@ import re
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
 
 NEXT = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 H = {"Accept-Language": "en-US,en;q=0.9"}
@@ -36,6 +36,7 @@ class Walmart(Retailer):
     def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
         raise NotImplementedError("walmart store finder is bot-walled; add store ids by hand in Settings")
 
+    @transport
     def lookup(self, item_id: str, store_id: str) -> Observation | None:
         r = self.s.get(f"https://www.walmart.com/ip/{item_id}", headers=H, timeout=25, allow_redirects=True)
         if "Robot or human" in r.text or "/blocked?" in r.url:
