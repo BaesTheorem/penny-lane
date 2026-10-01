@@ -369,7 +369,7 @@ def qr():
     buf = io.BytesIO()
     light = request.args.get("light")
     segno.make(request.args.get("d") or "", error="m").save(
-        buf, kind="png", scale=6, dark="#3a2a1e" if light else "#e3e2e6", light="#fff8f3" if light else "#121316")
+        buf, kind="png", scale=6, dark="#0b2a5c" if light else "#e3e2e6", light="#faf9ff" if light else "#121316")
     from flask import Response
     return Response(buf.getvalue(), mimetype="image/png")
 

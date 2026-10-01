@@ -8,7 +8,7 @@ struct PennyLaneApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(conn)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
                 .onOpenURL { url in conn.handle(url: url) }
         }
     }
@@ -21,7 +21,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.07, green: 0.075, blue: 0.086).ignoresSafeArea()
+            Color(red: 0.89, green: 0.925, blue: 1.0).ignoresSafeArea()
             if conn.baseURL == nil {
                 PairingPrompt(showPairing: $showPairing)
             } else if let base = conn.baseURL {
@@ -32,8 +32,8 @@ struct RootView: View {
                 VStack {
                     Text(msg).font(.footnote).padding(8)
                         .frame(maxWidth: .infinity)
-                        .background(Color(red: 0.16, green: 0.16, blue: 0.18))
-                        .border(Color(white: 0.27), width: 1)
+                        .background(Color(red: 0.82, green: 0.88, blue: 1.0))
+                        .border(Color(red: 0.0, green: 0.408, blue: 0.882), width: 1)
                     Spacer()
                 }
             }
@@ -60,7 +60,7 @@ struct PairingPrompt: View {
     @State private var manual = ""
     var body: some View {
         VStack(spacing: 16) {
-            Text("¢").font(.system(size: 96, weight: .bold)).foregroundStyle(Color(red: 1, green: 0.84, blue: 0.31))
+            Text("¢").font(.system(size: 96, weight: .bold)).foregroundStyle(Color(red: 0.0, green: 0.408, blue: 0.882))
             Text("Penny Lane").font(.title2)
             Text("Pair with the Mac: Settings → Phone access → scan the QR.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)

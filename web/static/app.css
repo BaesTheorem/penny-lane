@@ -1,92 +1,92 @@
 /* Penny Lane: Material 3 via Beer CSS, soft and bright on purpose (this app
    opts out of the house flat/sharp dark default). Light tonal surfaces, large
-   radii, low elevation, a warm copper seed (it is a penny app) with the full
-   MD3 role set derived from it by ui("theme") in app.js. Icons: Material
-   Symbols Rounded, self-hosted. */
+   radii, low elevation, a friendly blue seed with the full MD3 role set
+   precomputed below. Icons: Material Symbols Rounded, self-hosted. */
 @font-face { font-family: "Material Symbols Rounded"; font-style: normal; font-weight: 100 700;
   src: url("/static/vendor/MaterialSymbolsRounded.woff2") format("woff2"); font-display: block; }
 @font-face { font-family: "Roboto"; src: url("/static/vendor/Roboto.ttf") format("truetype"); font-weight: 100 900; }
 
-/* MD3 tonal roles computed once from seed #c2611a with Google's
-   material-color-utilities (SchemeVibrant, contrast 0.5): deep copper on
-   the big surfaces, warm cream behind them. Dark set kept for a toggle. */
+/* MD3 tonal roles computed once from seed #2f7cf6 with Google's
+   material-color-utilities (SchemeVibrant, contrast 0.5): a deep navy
+   primary, a bright friendly blue container, cool off-white surfaces.
+   Dark set kept for a toggle. */
 body, body.light {
-  --primary:#5b2700;
+  --primary:#003376;
   --on-primary:#ffffff;
-  --primary-container:#b15200;
+  --primary-container:#0068e1;
   --on-primary-container:#ffffff;
-  --secondary:#4d300f;
+  --secondary:#313453;
   --on-secondary:#ffffff;
-  --secondary-container:#8b6540;
+  --secondary-container:#686a8d;
   --on-secondary-container:#ffffff;
-  --tertiary:#4a3200;
+  --tertiary:#392f5e;
   --on-tertiary:#ffffff;
-  --tertiary-container:#8a6728;
+  --tertiary-container:#716699;
   --on-tertiary-container:#ffffff;
   --error:#740006;
   --on-error:#ffffff;
   --error-container:#cf2c27;
   --on-error-container:#ffffff;
-  --surface:#fff8f5;
-  --on-surface:#1b0e07;
-  --surface-variant:#fcdccc;
-  --on-surface-variant:#453227;
-  --outline:#644e42;
-  --outline-variant:#80685b;
-  --inverse-surface:#3d2d24;
-  --inverse-on-surface:#ffede5;
-  --inverse-primary:#ffb68c;
-  --surface-dim:#dbc1b5;
-  --surface-bright:#fff8f5;
+  --surface:#faf9ff;
+  --on-surface:#0d111a;
+  --surface-variant:#dee2f2;
+  --on-surface-variant:#313642;
+  --outline:#4d5260;
+  --outline-variant:#686d7b;
+  --inverse-surface:#2d303a;
+  --inverse-on-surface:#eef0fd;
+  --inverse-primary:#aec6ff;
+  --surface-dim:#c3c6d3;
+  --surface-bright:#faf9ff;
   --surface-container-lowest:#ffffff;
-  --surface-container-low:#fff1eb;
-  --surface-container:#fee3d5;
-  --surface-container-high:#f2d8ca;
-  --surface-container-highest:#e6ccbf;
-  --background:#fff8f5;
-  --on-background:#261811;
+  --surface-container-low:#f1f3ff;
+  --surface-container:#e5e8f5;
+  --surface-container-high:#dadce9;
+  --surface-container-highest:#ced1de;
+  --background:#faf9ff;
+  --on-background:#181b25;
   --shadow:#000000;
   --scrim:#000000;
-  --surface-tint:#9a4600;
+  --surface-tint:#005ac4;
 }
 body.dark {
-  --primary:#ffd3bc;
-  --on-primary:#421a00;
-  --primary-container:#e86d00;
+  --primary:#cfdcff;
+  --on-primary:#002356;
+  --primary-container:#4f8eff;
   --on-primary-container:#000000;
-  --secondary:#ffd5ae;
-  --on-secondary:#3a1f02;
-  --secondary-container:#b28960;
+  --secondary:#d8d9ff;
+  --on-secondary:#202341;
+  --secondary-container:#8c8eb3;
   --on-secondary-container:#000000;
-  --tertiary:#ffd696;
-  --on-tertiary:#352200;
-  --tertiary-container:#b18a48;
+  --tertiary:#e2d7ff;
+  --on-tertiary:#291e4c;
+  --tertiary-container:#9689be;
   --on-tertiary-container:#000000;
   --error:#ffd2cc;
   --on-error:#540003;
   --error-container:#ff5449;
   --on-error-container:#000000;
-  --surface:#1d1009;
+  --surface:#0f131c;
   --on-surface:#ffffff;
-  --surface-variant:#574237;
-  --on-surface-variant:#f5d6c6;
-  --outline:#c9ac9d;
-  --outline-variant:#a58b7d;
-  --inverse-surface:#f8ddd0;
-  --inverse-on-surface:#36271e;
-  --inverse-primary:#773500;
-  --surface-dim:#1d1009;
-  --surface-bright:#524137;
-  --surface-container-lowest:#0f0502;
-  --surface-container-low:#281a12;
-  --surface-container:#34251c;
-  --surface-container-high:#3f2f26;
-  --surface-container-highest:#4b3a31;
-  --background:#1d1009;
-  --on-background:#f8ddd0;
+  --surface-variant:#424754;
+  --on-surface-variant:#d8dcec;
+  --outline:#adb1c1;
+  --outline-variant:#8b909f;
+  --inverse-surface:#dfe2ef;
+  --inverse-on-surface:#262a34;
+  --inverse-primary:#004498;
+  --surface-dim:#0f131c;
+  --surface-bright:#41444f;
+  --surface-container-lowest:#040710;
+  --surface-container-low:#1a1d27;
+  --surface-container:#242831;
+  --surface-container-high:#2f323c;
+  --surface-container-highest:#3a3d48;
+  --background:#0f131c;
+  --on-background:#dfe2ef;
   --shadow:#000000;
   --scrim:#000000;
-  --surface-tint:#ffb68c;
+  --surface-tint:#aec6ff;
 }
 
 :root {
@@ -128,7 +128,7 @@ h5, h6 { margin: 14px 0 8px; font-weight: 600; }
 h5 { font-size: 1.35rem; }
 
 /* Hero: the friendly summary at the top of Home */
-.hero { background: linear-gradient(135deg, var(--primary-container), var(--primary)); color: var(--on-primary-container); border-radius: 28px; padding: 18px 20px; margin: 4px 0 14px; box-shadow: 0 6px 18px rgba(177, 82, 0, .28); }
+.hero { background: linear-gradient(135deg, var(--primary-container), var(--primary)); color: var(--on-primary-container); border-radius: 28px; padding: 18px 20px; margin: 4px 0 14px; box-shadow: 0 6px 18px rgba(0, 104, 225, .30); }
 .hero .big { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
 .hero .sub { opacity: .85; margin-top: 4px; font-size: .9rem; }
 .hero .stats { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
@@ -137,7 +137,7 @@ h5 { font-size: 1.35rem; }
 
 /* Cards: filled tonal, rounded, barely lifted */
 article.card { background: var(--surface-container-lowest); border: 0; border-radius: var(--radius); padding: 14px 16px; margin: 10px 0;
-  cursor: pointer; box-shadow: 0 1px 3px rgba(91, 39, 0, .10), 0 0 0 1px rgba(91, 39, 0, .05); transition: background .15s, box-shadow .15s; }
+  cursor: pointer; box-shadow: 0 1px 3px rgba(0, 51, 118, .10), 0 0 0 1px rgba(0, 51, 118, .05); transition: background .15s, box-shadow .15s; }
 article.card:hover { background: var(--surface-container); box-shadow: 0 2px 8px rgba(0,0,0,.10); }
 .card .title { font-weight: 600; font-size: 1rem; line-height: 1.3; }
 .card .meta { font-size: .84rem; color: var(--on-surface-variant); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }

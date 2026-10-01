@@ -104,7 +104,7 @@ reports, or Dollar General live) and checks every watched store.
 
 The web UI is Material 3 through Beer CSS in a soft, bright register: light tonal
 surfaces, large radii, low elevation, Material Symbols Rounded, and an MD3 scheme
-computed once from the copper seed `#b86a2b` with Google's material-color-utilities
+computed once from the blue seed `#2f7cf6` (SchemeVibrant, contrast 0.5) with Google's material-color-utilities
 and baked into `web/static/app.css` (a dark set is included for a future toggle).
 `beer.min.js` is an ES module: load it with `type="module"`.
 
