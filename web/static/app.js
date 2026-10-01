@@ -23,6 +23,16 @@
     if (d < 1440) return `${Math.round(d / 60)}h ago`;
     return `${Math.round(d / 1440)}d ago`;
   };
+  const day = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+  // "When did it go to a penny?": our own first sighting at this store (bounded by the
+  // last higher price we saw), plus the earliest community report anywhere.
+  const pennyWhen = (r) => {
+    const parts = [];
+    const p = r.penny || {};
+    if (p.since) parts.push(p.after ? `pennied here between ${day(p.after)} and ${day(p.since)}` : `$0.01 here since at least ${day(p.since)}`);
+    if (r.first_reported) parts.push(`first reported pennied ${day(r.first_reported)}`);
+    return parts.length ? `<div class="when"><i>schedule</i>${esc(parts.join(" · "))}</div>` : "";
+  };
   const snack = (msg) => { const s = $("#snack"); s.textContent = msg; s.classList.add("show"); setTimeout(() => s.classList.remove("show"), 2500); };
 
   // ---- tabs ----
@@ -97,6 +107,7 @@
         ${r.store_status === "CLEARANCE" ? '<span class="tag clr">CLEARANCE</span>' : ""}${r.store_status === "PENNY" ? '<span class="tag penny">PENNY</span>' : ""}
         ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
         ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""}</div>
+      ${pennyWhen(r)}
       <div class="reasons">${esc(reasons.slice(0, 4).join(" · "))}</div></article>`;
   }
   document.addEventListener("click", (e) => {
@@ -114,6 +125,7 @@
       <div class="head"><span class="score ${esc(o.stage || "watch")}">${o.score ?? "–"}</span><span class="title">${esc(o.store_name || o.store_id)}</span></div>
       <div class="meta"><span class="price ${o.price != null && o.price <= 0.01 ? "penny" : ""}">${money(o.clearance_price ?? o.price)}</span>${o.original ? `<span class="strike">${money(o.original)}</span>` : ""}
         · qty ${o.qty ?? "?"} · ${esc(o.store_status || "")} ${esc(o.promo || "")} · ${esc(ago(o.ts))}</div>
+      ${pennyWhen({ penny: o.penny, first_reported: d.first_reported })}
       <div class="reasons">${esc((o.reasons || []).join(" · "))}</div></article>`).join("");
     const hist = d.history.slice(0, 60).map((h) => `<tr><td>${new Date(h.ts * 1000).toLocaleString()}</td><td>${esc(h.store_id)}</td>
       <td class="price">${money(h.price)}</td><td>${money(h.clearance_price)}</td><td>${h.qty ?? ""}</td><td>${esc(h.store_status || "")}</td></tr>`).join("");
@@ -179,6 +191,7 @@
         <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))}${r.retail ? ` · <span title="MSRP">MSRP ${money(r.retail)}</span>` : ""}
           ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
           ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""} ${esc(r.store_hint || "")}</div>
+        ${r.first_reported_at ? `<div class="when"><i>schedule</i>first reported pennied ${esc(day(r.first_reported_at))}${r.reported_at && day(r.reported_at) !== day(r.first_reported_at) ? `, last seen ${esc(day(r.reported_at))}` : ""}</div>` : ""}
         <div class="reasons">${local || '<span class="muted">not checked at your stores yet</span>'}</div></article>`;
     }).join("") || `<div class="empty"><i>list_alt</i>No reports pulled yet.</div>`;
   }

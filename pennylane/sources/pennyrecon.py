@@ -36,7 +36,8 @@ class PennyRecon(Source):
                 upc=norm_upc(str(it.get("gtin12") or it.get("upc") or it.get("gtin") or "")),
                 name=(it.get("name") or it.get("title") or "").strip(), price=0.01,
                 retail=_num(it.get("retail") or it.get("retailPrice")),
-                reported_at=parse_ts(it.get("lastSeen") or it.get("lastReportedAt") or it.get("updated")),
+                reported_at=parse_ts(it.get("lastSeenAt") or it.get("lastSeen") or it.get("lastReportedAt") or it.get("updated")),
+                first_reported_at=parse_ts(it.get("firstReportedAt") or it.get("firstSeen")),
                 url=it.get("url") or it.get("homeDepotUrl") or "",
                 store_hint=(f"{reports} reports; " + hint) if hint else f"{reports} reports")
 

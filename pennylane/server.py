@@ -94,7 +94,11 @@ def predictions():
         params.append(ctype)
     sql += f" ORDER BY {order} LIMIT ?"
     params.append(limit)
-    return jsonify(db.rows(sql, params))
+    out = db.rows(sql, params)
+    for r in out:
+        r["penny"] = db.penny_window(r["retailer"], r["item_id"], r["store_id"])
+        r["first_reported"] = db.first_reported(r["retailer"], r["item_id"])
+    return jsonify(out)
 
 
 @app.get("/api/alerts")
@@ -181,6 +185,9 @@ def _merge_reports(rows: list[dict]) -> list[dict]:
                 m[f] = r[f]
         if (r.get("reported_at") or 0) > (m.get("reported_at") or 0):
             m["reported_at"] = r["reported_at"]
+        fr = r.get("first_reported_at") or r.get("reported_at")
+        if fr and (not m.get("first_reported_at") or fr < m["first_reported_at"]):
+            m["first_reported_at"] = fr
         if r.get("store_hint") and r["store_hint"] not in (m.get("store_hint") or ""):
             m["store_hint"] = ((m.get("store_hint") or "") + " · " + r["store_hint"]).strip(" ·")
     seen, out = set(), []
@@ -228,11 +235,13 @@ def item(retailer, item_id):
             o["score"] = sc["score"] if sc else None
             o["stage"] = sc["stage"] if sc else None
             o["reasons"] = sc["reasons"] if sc else []
+            o["penny"] = db.penny_window(retailer, item_id, st["store_id"])
             latest.append(o)
     reports = db.rows("SELECT * FROM reports WHERE retailer=? AND (item_id=? OR sku=? OR upc=?) ORDER BY reported_at DESC",
                       (retailer, item_id, it.get("sku") or "-", it.get("upc") or "-"))
     watched = db.one("SELECT 1 FROM watches WHERE retailer=? AND item_id=?", (retailer, item_id)) is not None
-    return jsonify(item=it, latest=latest, history=db.history(retailer, item_id), reports=reports, watched=watched)
+    return jsonify(item=it, latest=latest, history=db.history(retailer, item_id), reports=reports, watched=watched,
+                   first_reported=db.first_reported(retailer, item_id))
 
 
 @app.get("/api/search")

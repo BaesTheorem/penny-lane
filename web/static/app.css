@@ -143,6 +143,8 @@ article.card:hover { background: var(--surface-container); box-shadow: 0 2px 8px
 .card .meta { font-size: .84rem; color: var(--on-surface-variant); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .card .reasons { font-size: .82rem; margin-top: 8px; color: var(--on-surface-variant); }
 .card .head { display: flex; align-items: flex-start; gap: 10px; }
+.card .when { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: .84rem; font-weight: 600; color: var(--primary); }
+.card .when i { font-size: 18px; font-variation-settings: "FILL" 1, "wght" 500; }
 
 /* Score pill */
 .score { flex: none; min-width: 48px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800;

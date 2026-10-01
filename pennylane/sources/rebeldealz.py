@@ -39,4 +39,4 @@ class RebelDealz(Source):
             name = next((c for c in cells if c and not norm_upc(c) and c.lower() not in ("confirmed", "reported")), "")
             status = next((c for c in cells if c.lower() in ("confirmed", "reported")), "")
             yield Report(self.key, f"{self.key}:{upc}", self.retailer, upc=upc, name=name[:120],
-                         reported_at=when, url=URL, store_hint=status)
+                         reported_at=when, first_reported_at=when, url=URL, store_hint=status)

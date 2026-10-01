@@ -65,9 +65,10 @@ class WordPressList(Source):
                     if not upc or upc in seen:
                         continue
                     seen.add(upc)
+                    when = parse_ts(m.group("date").replace(".", "")) or modified
                     yield Report(self.key, f"{self.key}:{upc}", self.retailer, upc=upc, sku=m.group("sku"),
                                  name=m.group("name").strip()[:120],
-                                 reported_at=parse_ts(m.group("date").replace(".", "")) or modified, url=link)
+                                 reported_at=when, first_reported_at=when, url=link)
                 continue
             for line in text.splitlines():
                 line = line.strip()
@@ -93,7 +94,7 @@ class WordPressList(Source):
                     if pd:
                         when = parse_ts(pd.group(1).replace(".", "")) or modified
                     yield Report(self.key, f"{self.key}:{upc}", self.retailer, upc=upc,
-                                 name=_name_from(line, m.group(0)), reported_at=when, url=link)
+                                 name=_name_from(line, m.group(0)), reported_at=when, first_reported_at=when, url=link)
 
 
 def _name_from(line: str, token: str) -> str:

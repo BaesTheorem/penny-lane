@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS obs_ts ON observations(ts);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY, source TEXT NOT NULL, retailer TEXT, item_id TEXT,
   sku TEXT, upc TEXT, name TEXT, price REAL, retail REAL, reported_at REAL, url TEXT,
-  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE, ctype TEXT);
+  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE, ctype TEXT, first_reported_at REAL);
 CREATE INDEX IF NOT EXISTS reports_item ON reports(retailer, item_id);
 CREATE INDEX IF NOT EXISTS reports_upc ON reports(upc);
 CREATE TABLE IF NOT EXISTS predictions (
@@ -83,6 +83,8 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE reports ADD COLUMN retail REAL")
     if "ctype" not in cols:
         conn.execute("ALTER TABLE reports ADD COLUMN ctype TEXT")
+    if "first_reported_at" not in cols:
+        conn.execute("ALTER TABLE reports ADD COLUMN first_reported_at REAL")
     icols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
     for col in ("category", "ctype"):
         if col not in icols:
@@ -149,12 +151,16 @@ def add_report(source: str, key: str, **f) -> bool:
     with tx() as c:
         cur = c.execute(
             """INSERT OR IGNORE INTO reports(source,key,retailer,item_id,sku,upc,name,price,retail,reported_at,
-               url,store_hint,fetched_at,ctype) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               url,store_hint,fetched_at,ctype,first_reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (source, key, f.get("retailer"), f.get("item_id"), f.get("sku"), f.get("upc"),
              f.get("name"), f.get("price"), f.get("retail"), f.get("reported_at"), f.get("url"),
-             f.get("store_hint"), time.time(), classify(f.get("name") or "", "", f.get("retailer") or "")))
-        if cur.rowcount == 0 and f.get("retail") is not None:
-            c.execute("UPDATE reports SET retail=? WHERE key=? AND retail IS NULL", (f.get("retail"), key))
+             f.get("store_hint"), time.time(), classify(f.get("name") or "", "", f.get("retailer") or ""),
+             f.get("first_reported_at")))
+        if cur.rowcount == 0:
+            # Existing row: refresh what moves (last seen) and fill what was missing.
+            c.execute("""UPDATE reports SET reported_at=COALESCE(?, reported_at), retail=COALESCE(retail, ?),
+                         first_reported_at=COALESCE(first_reported_at, ?), fetched_at=? WHERE key=?""",
+                      (f.get("reported_at"), f.get("retail"), f.get("first_reported_at"), time.time(), key))
         return cur.rowcount > 0
 
 
@@ -329,3 +335,29 @@ def reclassify_all() -> dict:
             c.execute("UPDATE reports SET ctype=? WHERE id=?", (classify(r["name"] or "", "", r["retailer"] or ""), r["id"]))
             m += 1
     return {"items": n, "reports": m}
+
+
+def penny_window(retailer, item_id, store_id) -> dict:
+    """When this store's register went to $0.01, as far as our own checks
+    show: `since` is the first penny observation of the current penny run,
+    `after` the last higher price seen before it (None if we never saw one)."""
+    obs = rows("SELECT ts, price FROM observations WHERE retailer=? AND item_id=? AND store_id=? ORDER BY ts DESC",
+               (retailer, item_id, store_id))
+    if not obs or obs[0]["price"] is None or obs[0]["price"] > 0.01:
+        return {"since": None, "after": None}
+    since, after = obs[0]["ts"], None
+    for o in obs[1:]:
+        if o["price"] is not None and o["price"] <= 0.01:
+            since = o["ts"]
+        else:
+            after = o["ts"]
+            break
+    return {"since": since, "after": after}
+
+
+def first_reported(retailer, item_id) -> float | None:
+    it = item(retailer, item_id) or {}
+    row = one("""SELECT MIN(COALESCE(first_reported_at, reported_at)) m FROM reports WHERE retailer=?
+                 AND (item_id=? OR (?<>'' AND sku=?) OR (?<>'' AND upc=?))""",
+              (retailer, item_id, it.get("sku") or "", it.get("sku") or "", it.get("upc") or "", it.get("upc") or ""))
+    return float(row["m"]) if row and row.get("m") else None

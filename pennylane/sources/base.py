@@ -30,6 +30,7 @@ class Report:
     price: float | None = 0.01
     retail: float | None = None
     reported_at: float | None = None
+    first_reported_at: float | None = None
     url: str = ""
     store_hint: str = ""
 
