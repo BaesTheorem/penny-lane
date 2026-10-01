@@ -40,7 +40,7 @@ class PennyCentral(Source):
                     source=self.key, key=f"{self.key}:{sku or item_id}", retailer=self.retailer,
                     item_id=item_id, sku=sku, upc=norm_upc(str(it.get("upc") or "")),
                     name=(it.get("name") or "").strip(),
-                    price=0.01, reported_at=parse_ts(it.get("lastSeenAt") or it.get("dateAdded")
+                    price=0.01, retail=_num(it.get("retailPrice")), reported_at=parse_ts(it.get("lastSeenAt") or it.get("dateAdded")
                                                      or it.get("firstReportedAt")),
                     url=it.get("homeDepotUrl") or "",
                     store_hint=", ".join(str(x) for x in locs[:12]) if isinstance(locs, list) else "")
@@ -50,3 +50,10 @@ class PennyCentral(Source):
             if len(items) < 50:
                 return
             page += 1
+
+
+def _num(v):
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None

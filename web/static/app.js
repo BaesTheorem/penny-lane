@@ -68,10 +68,11 @@
     if ($("#fStore").value) q.set("store", $("#fStore").value);
     if ($("#fStage").value) q.set("stage", $("#fStage").value);
     q.set("min_score", "25");
+    q.set("sort", $("#fSort").value || "score");
     const rows = await api(`/api/predictions?${q}`);
     $("#ranked").innerHTML = rows.length ? rows.map(card).join("") : `<p class="muted">Nothing scored yet. Run <b>Verify</b> or a <b>Sweep</b> from Settings.</p>`;
   }
-  ["#fRetailer", "#fStore", "#fStage"].forEach((s) => $(s).addEventListener("change", loadHome));
+  ["#fRetailer", "#fStore", "#fStage", "#fSort"].forEach((s) => $(s).addEventListener("change", loadHome));
 
   function card(r) {
     const eff = r.clearance_price ?? r.price;
@@ -79,7 +80,7 @@
     return `<article class="card" data-item="${esc(r.retailer)}/${esc(r.item_id)}">
       <div><span class="score ${esc(r.stage)}">${r.score}</span><span class="title">${esc(r.name || r.item_id)}</span></div>
       <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.store_name || r.store_id)} ·
-        <span class="price ${eff != null && eff <= 0.01 ? "penny" : ""}">${money(eff)}</span>${r.original ? `<span class="strike">${money(r.original)}</span>` : ""}
+        <span class="price ${eff != null && eff <= 0.01 ? "penny" : ""}">${money(eff)}</span>${r.msrp && r.msrp !== eff ? `<span class="strike" title="MSRP">${money(r.msrp)}</span>` : ""}
         · qty ${r.qty ?? "?"} · ${esc(ago(r.observed_at))}
         ${r.store_status === "CLEARANCE" ? '<span class="tag clr">CLEARANCE</span>' : ""}${r.store_status === "PENNY" ? '<span class="tag penny">PENNY</span>' : ""}
         ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""}</div>
@@ -152,19 +153,22 @@
 
   // ---- lists ----
   async function loadLists() {
-    const q = $("#lRetailer").value ? `?retailer=${$("#lRetailer").value}` : "";
-    const rows = await api(`/api/reports${q}`);
+    const q = new URLSearchParams();
+    if ($("#lRetailer").value) q.set("retailer", $("#lRetailer").value);
+    q.set("sort", $("#lSort").value || "recent");
+    const rows = await api(`/api/reports?${q}`);
     $("#lists").innerHTML = rows.slice(0, 400).map((r) => {
       const local = (r.local || []).map((o) => `<span class="tag ${o.price != null && o.price <= 0.01 ? "penny" : (o.qty > 0 ? "ok" : "")}">${esc(o.store_name)}: ${money(o.price)} · qty ${o.qty ?? "?"}</span>`).join("");
       const link = r.item_id ? `data-item="${esc(r.retailer)}/${esc(r.item_id)}"` : (r.retailer === "dollargeneral" && r.upc ? `data-item="dollargeneral/${esc(r.upc.replace(/^0+/, ""))}"` : "");
       return `<article class="card" ${link}>
         <div class="title">${esc(r.name || r.sku || r.upc)}</div>
-        <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))}
+        <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))}${r.retail ? ` · <span title="MSRP">MSRP ${money(r.retail)}</span>` : ""}
           ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""} ${esc(r.store_hint || "")}</div>
         <div class="reasons">${local || '<span class="muted">not checked at your stores yet</span>'}</div></article>`;
     }).join("") || `<p class="muted">No reports pulled yet.</p>`;
   }
   $("#lRetailer").addEventListener("change", loadLists);
+  $("#lSort").addEventListener("change", loadLists);
   $("#runSources").addEventListener("click", () => runJob("sources"));
   $("#runVerify").addEventListener("click", () => runJob("verify"));
   async function runJob(job, extra = "") {

@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS obs_item ON observations(retailer, item_id, store_id,
 CREATE INDEX IF NOT EXISTS obs_ts ON observations(ts);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY, source TEXT NOT NULL, retailer TEXT, item_id TEXT,
-  sku TEXT, upc TEXT, name TEXT, price REAL, reported_at REAL, url TEXT,
+  sku TEXT, upc TEXT, name TEXT, price REAL, retail REAL, reported_at REAL, url TEXT,
   store_hint TEXT, fetched_at REAL, key TEXT UNIQUE);
 CREATE INDEX IF NOT EXISTS reports_item ON reports(retailer, item_id);
 CREATE INDEX IF NOT EXISTS reports_upc ON reports(upc);
@@ -70,8 +70,17 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(SCHEMA)
+        _migrate(conn)
         _local.conn = conn
     return conn
+
+
+def _migrate(conn) -> None:
+    """Additive column migrations for databases created by older versions."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
+    if "retail" not in cols:
+        conn.execute("ALTER TABLE reports ADD COLUMN retail REAL")
+    conn.commit()
 
 
 @contextmanager
@@ -127,11 +136,13 @@ def add_report(source: str, key: str, **f) -> bool:
     """Insert a community report; returns True when it is new."""
     with tx() as c:
         cur = c.execute(
-            """INSERT OR IGNORE INTO reports(source,key,retailer,item_id,sku,upc,name,price,reported_at,
-               url,store_hint,fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT OR IGNORE INTO reports(source,key,retailer,item_id,sku,upc,name,price,retail,reported_at,
+               url,store_hint,fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (source, key, f.get("retailer"), f.get("item_id"), f.get("sku"), f.get("upc"),
-             f.get("name"), f.get("price"), f.get("reported_at"), f.get("url"),
+             f.get("name"), f.get("price"), f.get("retail"), f.get("reported_at"), f.get("url"),
              f.get("store_hint"), time.time()))
+        if cur.rowcount == 0 and f.get("retail") is not None:
+            c.execute("UPDATE reports SET retail=? WHERE key=? AND retail IS NULL", (f.get("retail"), key))
         return cur.rowcount > 0
 
 

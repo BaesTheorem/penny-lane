@@ -31,6 +31,10 @@
         <option value="">Any stage</option><option value="penny">penny</option><option value="imminent">imminent</option>
         <option value="late">late</option><option value="early">early</option>
       </select>
+      <select id="fSort" class="field small border">
+        <option value="score">Sort: score</option><option value="msrp">Sort: MSRP</option>
+        <option value="savings">Sort: savings</option><option value="recent">Sort: recent</option>
+      </select>
     </div>
     <div id="ranked"></div>
   </section>
@@ -53,6 +57,9 @@
     <h5>Community lists</h5>
     <div class="row wrap">
       <select id="lRetailer" class="field small border"><option value="">All retailers</option></select>
+      <select id="lSort" class="field small border">
+        <option value="recent">Sort: recent</option><option value="retail">Sort: MSRP</option><option value="stocked">Sort: stocked near me</option>
+      </select>
       <button id="runSources" class="border small">Pull lists now</button>
       <button id="runVerify" class="border small">Verify at my stores</button>
     </div>

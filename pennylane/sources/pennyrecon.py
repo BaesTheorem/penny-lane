@@ -35,6 +35,14 @@ class PennyRecon(Source):
                 item_id=item_id, sku=sku,
                 upc=norm_upc(str(it.get("gtin12") or it.get("upc") or it.get("gtin") or "")),
                 name=(it.get("name") or it.get("title") or "").strip(), price=0.01,
+                retail=_num(it.get("retail") or it.get("retailPrice")),
                 reported_at=parse_ts(it.get("lastSeen") or it.get("lastReportedAt") or it.get("updated")),
                 url=it.get("url") or it.get("homeDepotUrl") or "",
                 store_hint=(f"{reports} reports; " + hint) if hint else f"{reports} reports")
+
+
+def _num(v):
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None

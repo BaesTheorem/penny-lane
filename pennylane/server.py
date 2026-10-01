@@ -62,8 +62,16 @@ def predictions():
     min_score = int(request.args.get("min_score") or 0)
     stage = request.args.get("stage")
     limit = int(request.args.get("limit") or 200)
+    sort = request.args.get("sort") or "score"
+    order = {"score": "p.score DESC, msrp DESC", "msrp": "msrp DESC, p.score DESC",
+             "savings": "(COALESCE(msrp,0) - COALESCE(o.clearance_price, o.price, 0)) DESC, p.score DESC",
+             "recent": "o.ts DESC"}.get(sort, "p.score DESC")
     sql = """SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, s.name AS store_name,
-                    o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at
+                    o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
+                    COALESCE(o.original,
+                             (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
+                                AND (r.item_id=p.item_id OR (i.sku<>'' AND r.sku=i.sku) OR (i.upc<>'' AND r.upc=i.upc))),
+                             CASE WHEN o.price > 0.01 THEN o.price END) AS msrp
              FROM predictions p
              JOIN items i ON i.retailer=p.retailer AND i.item_id=p.item_id
              LEFT JOIN stores s ON s.retailer=p.retailer AND s.store_id=p.store_id
@@ -80,7 +88,7 @@ def predictions():
     if stage:
         sql += " AND p.stage=?"
         params.append(stage)
-    sql += " ORDER BY p.score DESC, p.computed_at DESC LIMIT ?"
+    sql += f" ORDER BY {order} LIMIT ?"
     params.append(limit)
     return jsonify(db.rows(sql, params))
 
@@ -106,11 +114,56 @@ def alerts_seen():
 def reports():
     retailer = request.args.get("retailer")
     days = int(request.args.get("days") or 45)
-    rows = db.report_items(retailer, since_days=days)
+    rows = _merge_reports(db.report_items(retailer, since_days=days))
     # Attach what we know locally: any observation at a watched store.
     for r in rows:
         r["local"] = _local_state(r)
+        if r.get("retail") is None:
+            r["retail"] = next((o.get("original") for o in r["local"] if o.get("original")), None)
+    sort = request.args.get("sort") or "recent"
+    if sort == "retail":
+        rows.sort(key=lambda r: -(r.get("retail") or 0))
+    elif sort == "stocked":
+        rows.sort(key=lambda r: -sum((o.get("qty") or 0) for o in r["local"]))
     return jsonify(rows)
+
+
+def _merge_reports(rows: list[dict]) -> list[dict]:
+    """One row per item: the same SKU/UPC arrives from several lists."""
+    merged: dict[str, dict] = {}
+    for r in rows:
+        key = f"{r.get('retailer')}:{r.get('item_id') or ''}:{r.get('sku') or ''}:{r.get('upc') or ''}"
+        for alt in (r.get("item_id"), r.get("sku"), r.get("upc")):
+            if alt and f"{r.get('retailer')}:{alt}" in merged:
+                key = f"{r.get('retailer')}:{alt}"
+                break
+        m = merged.get(key)
+        if not m:
+            m = dict(r)
+            m["sources"] = [r["source"]]
+            merged[key] = m
+            for alt in (r.get("item_id"), r.get("sku"), r.get("upc")):
+                if alt:
+                    merged.setdefault(f"{r.get('retailer')}:{alt}", m)
+            continue
+        if r["source"] not in m["sources"]:
+            m["sources"].append(r["source"])
+        for f in ("item_id", "sku", "upc", "name", "url", "retail"):
+            if not m.get(f) and r.get(f):
+                m[f] = r[f]
+        if (r.get("reported_at") or 0) > (m.get("reported_at") or 0):
+            m["reported_at"] = r["reported_at"]
+        if r.get("store_hint") and r["store_hint"] not in (m.get("store_hint") or ""):
+            m["store_hint"] = ((m.get("store_hint") or "") + " · " + r["store_hint"]).strip(" ·")
+    seen, out = set(), []
+    for m in merged.values():
+        if id(m) in seen:
+            continue
+        seen.add(id(m))
+        m["source"] = ", ".join(m["sources"])
+        out.append(m)
+    out.sort(key=lambda r: -(r.get("reported_at") or r.get("fetched_at") or 0))
+    return out
 
 
 def _local_state(rep: dict) -> list[dict]:

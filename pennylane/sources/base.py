@@ -28,6 +28,7 @@ class Report:
     upc: str = ""
     name: str = ""
     price: float | None = 0.01
+    retail: float | None = None
     reported_at: float | None = None
     url: str = ""
     store_hint: str = ""
