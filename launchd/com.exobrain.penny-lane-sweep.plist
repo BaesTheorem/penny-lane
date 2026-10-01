@@ -5,8 +5,8 @@
   <key>Label</key><string>com.exobrain.penny-lane-sweep</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/alexhedtke/Documents/penny-lane/bin/penny</string>
-    <string>sweep</string>
+    <string>/Users/alexhedtke/Documents/penny-lane/.venv/bin/python</string>
+    <string>-m</string><string>pennylane.scan</string><string>sweep</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/alexhedtke/Documents/penny-lane</string>
   <!-- The Home Depot in-store Special Values walk: ~320 requests per store at

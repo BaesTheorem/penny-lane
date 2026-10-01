@@ -5,8 +5,8 @@
   <key>Label</key><string>com.exobrain.penny-lane-scan</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/alexhedtke/Documents/penny-lane/bin/penny</string>
-    <string>all</string>
+    <string>/Users/alexhedtke/Documents/penny-lane/.venv/bin/python</string>
+    <string>-m</string><string>pennylane.scan</string><string>all</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/alexhedtke/Documents/penny-lane</string>
   <!-- Community lists move on Tuesday mornings (DG) and daily ~10:00 UTC (HD);

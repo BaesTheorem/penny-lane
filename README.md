@@ -71,7 +71,7 @@ bin/penny pulse                  # hot-set re-check + score (hourly job)
 bin/penny serve                  # web UI on http://127.0.0.1:5033
 ```
 
-launchd: copy `launchd/*.plist` into `~/Library/LaunchAgents` (edit the paths)
+launchd: copy `launchd/*.plist` into `~/Library/LaunchAgents` (edit the paths; the jobs spawn `.venv/bin/python` directly because macOS TCC refuses a venv interpreter reached through a shell wrapper from launchd)
 and `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/<label>.plist`. The
 server job keeps the UI and tunnel up; the scan job runs `all` four times a
 day; the sweep job walks Home Depot nightly; the pulse job runs hourly.
