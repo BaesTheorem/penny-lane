@@ -9,7 +9,7 @@ clearance, and how many are on the shelf. Adapters never write to the DB;
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from typing import ParamSpec, TypeVar
 
@@ -109,7 +109,7 @@ class Retailer:
         scan.py then falls back to the local UPC index built from sweeps."""
         return None
 
-    def sweep(self, store_id: str, max_pages: int = 400):
+    def sweep(self, store_id: str, max_pages: int = 400) -> Iterator[Observation]:
         """Yield Observations for every clearance-ish item at a store."""
         return iter(())
 

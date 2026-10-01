@@ -12,6 +12,7 @@ not "blocked". `keyword` search returns empty; navParam and itemIds work.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 
 from curl_cffi import requests
 
@@ -79,13 +80,14 @@ class HomeDepot(Retailer):
     def gql(self, op: str, query: str, variables: dict, tries: int = 4) -> dict:
         # 206 is Home Depot's own upstream hiccup (AkamaiGHost "Generic errors");
         # it clears within seconds to minutes, so wait it out before giving up.
-        for attempt in range(tries):
+        r = self.s.post(GW + op, headers=HEADERS,
+                        json={"operationName": op, "variables": variables, "query": query}, timeout=25)
+        for attempt in range(1, tries):
+            if r.status_code != 206:
+                break
+            time.sleep(3 * attempt)
             r = self.s.post(GW + op, headers=HEADERS,
                             json={"operationName": op, "variables": variables, "query": query}, timeout=25)
-            if r.status_code == 206 and attempt < tries - 1:
-                time.sleep(3 * (attempt + 1))
-                continue
-            break
         if r.status_code == 206:
             raise LaneRetry("homedepot 206 upstream error")
         if r.status_code in (403, 429):
@@ -145,7 +147,7 @@ class HomeDepot(Retailer):
                 time.sleep(self.gap)
         return out
 
-    def sweep(self, store_id: str, max_pages: int = 400, nav: str = SPECIAL_VALUES_NAV):
+    def sweep(self, store_id: str, max_pages: int = 400, nav: str = SPECIAL_VALUES_NAV) -> Iterator[Observation]:
         """Every in-store Special Values item at the store, 24 per request."""
         start = 0
         for _ in range(max_pages):
