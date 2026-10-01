@@ -289,6 +289,16 @@ def hot_items(retailer, min_msrp: float, min_score: int) -> list[str]:
                   (retailer, min_score)):
         ids.add(r["item_id"])
     if retailer == "dollargeneral":
-        for r in rows("SELECT DISTINCT upc FROM reports WHERE retailer='dollargeneral' AND upc<>''"):
+        # DG lists carry no retail price, so the floor cannot pre-filter. Keep
+        # the hourly cost down: UPCs never checked yet (first look), plus items
+        # whose last look was a stocked penny or a full price at or above the
+        # floor. Everything else waits for the 4x-daily scan.
+        for r in rows("""SELECT DISTINCT r.upc FROM reports r WHERE r.retailer='dollargeneral' AND r.upc<>''
+                         AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.retailer='dollargeneral'
+                                         AND o.item_id=LTRIM(r.upc,'0'))"""):
             ids.add(r["upc"].lstrip("0"))
+        for r in rows("""SELECT item_id FROM observations o WHERE retailer='dollargeneral' AND id IN (
+                           SELECT MAX(id) FROM observations WHERE retailer='dollargeneral' GROUP BY item_id, store_id)
+                         AND ((price<=0.01 AND COALESCE(qty,0)>0) OR COALESCE(original,0)>=?)""", (min_msrp,)):
+            ids.add(r["item_id"])
     return sorted(ids)
