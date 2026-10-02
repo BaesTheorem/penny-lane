@@ -18,7 +18,7 @@ struct WebView: UIViewRepresentable {
         let wv = WKWebView(frame: .zero, configuration: cfg)
         wv.navigationDelegate = context.coordinator
         wv.isOpaque = false
-        wv.backgroundColor = UIColor(red: 0.945, green: 0.953, blue: 1.0, alpha: 1)
+        wv.backgroundColor = UIColor(red: 0.957, green: 0.945, blue: 0.910, alpha: 1)
         wv.scrollView.contentInsetAdjustmentBehavior = .never
         context.coordinator.webView = wv
         context.coordinator.login()

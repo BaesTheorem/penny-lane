@@ -102,11 +102,14 @@ reports, or Dollar General live) and checks every watched store.
 
 ## Design
 
-The web UI is Material 3 through Beer CSS in a soft, bright register: light tonal
-surfaces, large radii, low elevation, Material Symbols Rounded, and an MD3 scheme
-computed once from the blue seed `#2f7cf6` (SchemeVibrant, contrast 0.5) with Google's material-color-utilities
-and baked into `web/static/app.css` (a dark set is included for a future toggle).
-`beer.min.js` is an ES module: load it with `type="module"`.
+The UI is a shelf tag. Every result is a price tag: a condensed price block on
+the left (clearance yellow when the register rings $0.01, with the struck-out
+MSRP under it), a punched hole and a perforation, then the small print. Stock
+at each watched store prints as receipt lines. Type is Archivo (variable width,
+condensed for prices) and IBM Plex Mono for codes; ink is navy on paper white,
+with one blue for actions and red only for the struck price. Fonts and the
+Material Symbols Sharp icon font are self-hosted in `web/static/vendor/`. No
+component framework: `web/static/app.css` is the whole design.
 
 ## Privacy
 

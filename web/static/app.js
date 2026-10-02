@@ -1,13 +1,14 @@
 /* Penny Lane web UI. Plain JS over the JSON API; the iPhone shell renders this
-   same page and injects scanned barcodes through window.pennyScan(code). */
+   same page and injects scanned barcodes through window.pennyScan(code).
+   Every result renders as a shelf tag (see app.css). */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
   const state = { status: null, stores: [], tab: "home" };
-  // The MD3 scheme is baked into app.css (seed #b86a2b); Beer only needs the mode.
-  if (window.ui) ui("mode", "light");
   const LABELS = { homedepot: "Home Depot", lowes: "Lowe's", dollargeneral: "Dollar General", walmart: "Walmart" };
+  const SHORT = { homedepot: "HD", lowes: "LOW", dollargeneral: "DG", walmart: "WMT" };
   const TYPES = {};
+  const STAGE = { penny: "On the shelf", imminent: "Imminent", late: "Late markdown", early: "Early markdown", watch: "Watching", gone: "Not on shelf" };
 
   const api = async (path, body) => {
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -19,27 +20,45 @@
   const ago = (ts) => {
     if (!ts) return "";
     const d = (Date.now() / 1000 - ts) / 60;
-    if (d < 60) return `${Math.round(d)}m ago`;
+    if (d < 60) return `${Math.max(1, Math.round(d))}m ago`;
     if (d < 1440) return `${Math.round(d / 60)}h ago`;
     return `${Math.round(d / 1440)}d ago`;
   };
   const day = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+  const snack = (msg) => { const s = $("#snack"); s.textContent = msg; s.classList.add("show"); setTimeout(() => s.classList.remove("show"), 2500); };
+  const isPenny = (p) => p != null && p <= 0.01;
+  // Store names from DG already start with "DG"; do not print the retailer twice.
+  const storeName = (retailer, name) => String(name || "").replace(new RegExp(`^${SHORT[retailer] || "@@"}\\s+`), "");
+
+  // A price set like a shelf tag: superscript dollar sign, condensed numerals.
+  const bigPrice = (v) => (v == null ? `<div class="now">&mdash;</div>` : `<div class="now"><sup>$</sup>${Number(v).toFixed(2)}</div>`);
+  const meter = (score) => {
+    const on = Math.round((Math.max(0, Math.min(100, score || 0)) / 100) * 5);
+    return `<div class="bars">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < on ? "on" : ""}"></span>`).join("")}</div>`;
+  };
   // "When did it go to a penny?": our own first sighting at this store (bounded by the
   // last higher price we saw), plus the earliest community report anywhere.
   const pennyWhen = (r) => {
     const parts = [];
     const p = r.penny || {};
-    if (p.since) parts.push(p.after ? `pennied here between ${day(p.after)} and ${day(p.since)}` : `$0.01 here since at least ${day(p.since)}`);
-    if (r.first_reported) parts.push(`first reported pennied ${day(r.first_reported)}`);
-    return parts.length ? `<div class="when"><i>schedule</i>${esc(parts.join(" · "))}</div>` : "";
+    if (p.since) parts.push(p.after ? `Pennied here between ${day(p.after)} and ${day(p.since)}` : `$0.01 here since at least ${day(p.since)}`);
+    if (r.first_reported) parts.push(`first reported ${day(r.first_reported)}`);
+    return parts.length ? `<div class="when"><i>event</i><span>${esc(parts.join(" · "))}</span></div>` : "";
   };
-  const snack = (msg) => { const s = $("#snack"); s.textContent = msg; s.classList.add("show"); setTimeout(() => s.classList.remove("show"), 2500); };
+  const codes = (r) => {
+    const out = [];
+    if (r.ctype && r.ctype !== "other") out.push(`<span class="kind">${esc(TYPES[r.ctype] || r.ctype)}</span>`);
+    if (r.sku) out.push(`<span>SKU ${esc(r.sku)}</span>`);
+    if (r.upc) out.push(`<span>UPC ${esc(r.upc)}</span>`);
+    return out.length ? `<div class="codes">${out.join("")}</div>` : "";
+  };
 
   // ---- tabs ----
   function showTab(name) {
     state.tab = name;
     $$(".tab").forEach((t) => t.classList.toggle("hidden", t.id !== `tab-${name}`));
-    $$("nav.bottom a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
+    $$(".tabbar a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
+    window.scrollTo(0, 0);
     if (name === "home") loadHome();
     if (name === "lists") loadLists();
     if (name === "settings") loadSettings();
@@ -49,7 +68,7 @@
   $("#scanBtn").addEventListener("click", () => (window.webkit?.messageHandlers?.scan ? window.webkit.messageHandlers.scan.postMessage("open") : showTab("scan")));
   $("#refreshBtn").addEventListener("click", () => { loadStatus().then(() => showTab(state.tab)); });
 
-  // ---- status / stores ----
+  // ---- status / stores / ticker ----
   async function loadStatus() {
     state.status = await api("/api/status");
     state.stores = state.status.stores;
@@ -57,19 +76,26 @@
     $("#unseen").textContent = unseen;
     $("#unseen").classList.toggle("hidden", !unseen);
     const retailers = [...new Set(state.stores.map((s) => s.retailer))];
-    for (const sel of ["#fRetailer", "#scanRetailer", "#lRetailer"]) fillSelect(sel, retailers.map((r) => [r, LABELS[r] || r]), "All retailers");
+    for (const sel of ["#fRetailer", "#lRetailer"]) fillSelect(sel, retailers.map((r) => [r, LABELS[r] || r]), "All");
+    fillSelect("#scanRetailer", retailers.map((r) => [r, LABELS[r] || r]), "Any");
     const types = await api("/api/types").catch(() => []);
     for (const t of types) TYPES[t.key] = t.label;
-    for (const sel of ["#fType", "#lType"]) fillSelect(sel, types.filter((t) => t.items || t.key === "food").map((t) => [t.key, `${t.label}${t.items ? ` (${t.items})` : ""}`]), "Any type");
-    for (const sel of ["#fStore", "#scanStore"]) fillSelect(sel, state.stores.map((s) => [s.store_id, `${LABELS[s.retailer] || s.retailer}: ${s.name}`]), sel === "#fStore" ? "All stores" : "All watched stores");
+    for (const sel of ["#fType", "#lType"]) fillSelect(sel, types.filter((t) => t.items || t.key === "food").map((t) => [t.key, t.label]), "Any");
+    fillSelect("#fStore", state.stores.map((s) => [s.store_id, `${SHORT[s.retailer] || s.retailer} ${storeName(s.retailer, s.name)}`]), "All");
+    fillSelect("#scanStore", state.stores.map((s) => [s.store_id, `${SHORT[s.retailer] || s.retailer} ${storeName(s.retailer, s.name)}`]), "All watched");
     const c = state.status.counts;
     const running = Object.entries(state.status.jobs || {}).filter(([, j]) => j.running).map(([k]) => k);
     const pennies = await api("/api/predictions?stage=penny&limit=500").then((r) => r.length).catch(() => 0);
-    const hour = new Date().getHours();
-    const hello = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-    $("#hero").innerHTML = `<div class="big">${hello}. ${pennies ? `${pennies} penn${pennies === 1 ? "y is" : "ies are"} on a shelf near you.` : "Nothing is at a penny near you right now."}</div>
-      <div class="sub">${state.stores.length} stores watched · lists and shelves re-checked hourly${running.length ? ` · running: ${esc(running.join(", "))}` : ""}</div>
-      <div class="stats"><div class="stat"><b>${c.items}</b>items tracked</div><div class="stat"><b>${c.observations}</b>price checks</div><div class="stat"><b>${c.reports}</b>community reports</div></div>`;
+    const lastRun = (state.status.runs || []).find((r) => r.finished);
+    const bits = [
+      `<span><b>${pennies}</b> AT $0.01 NEAR YOU</span>`,
+      `<span>${state.stores.length} STORES WATCHED</span>`,
+      `<span>${c.observations.toLocaleString()} PRICE CHECKS</span>`,
+      `<span>${c.reports.toLocaleString()} COMMUNITY REPORTS</span>`,
+      lastRun ? `<span>LAST ${esc(lastRun.kind.toUpperCase())} ${esc(ago(lastRun.finished).toUpperCase())}</span>` : "",
+      running.length ? `<span><b>RUNNING ${esc(running.join(", ").toUpperCase())}</b></span>` : "",
+    ].filter(Boolean);
+    $("#ticker").innerHTML = `<div class="ticker-in">${bits.join('<span class="dot">/</span>')}</div>`;
   }
   function fillSelect(sel, pairs, first) {
     const el = $(sel); const cur = el.value;
@@ -79,11 +105,17 @@
 
   // ---- home ----
   async function loadHome() {
-    const alerts = await api("/api/alerts?limit=8");
-    $("#alerts").innerHTML = alerts.filter((a) => !a.seen).map((a) => `
-      <div class="alert ${esc(a.kind === "penny_on_shelf" ? "penny" : "imminent")}" data-item="${esc(a.retailer)}/${esc(a.item_id)}">
-        <i>${a.kind === "penny_on_shelf" ? "paid" : "trending_down"}</i><div><b>${esc(a.kind === "penny_on_shelf" ? "Penny on the shelf" : "Getting close")}</b> · ${esc(ago(a.ts))}<br>${esc(a.message)}</div></div>`).join("");
-    if (alerts.some((a) => !a.seen)) api("/api/alerts/seen", {}).catch(() => {});
+    const alerts = (await api("/api/alerts?limit=40")).filter((a) => !a.seen);
+    const pennies = alerts.filter((a) => a.kind === "penny_on_shelf").length;
+    // Price out of the alert message ("..., clearance price $17.99; ...") for the left column.
+    const priceOf = (m) => ((m || "").match(/clearance price (\$[\d.,]+)/) || (m || "").match(/register price is (\$[\d.,]+)/) || [])[1] || "";
+    $("#alerts").innerHTML = alerts.length ? `<details class="alerts">
+      <summary><i>notifications_active</i>${alerts.length} new alert${alerts.length === 1 ? "" : "s"}${pennies ? ` · ${pennies} at $0.01` : ""}<i class="chev">expand_more</i></summary>
+      ${alerts.map((a) => `<div class="a-row" data-item="${esc(a.retailer)}/${esc(a.item_id)}">
+        <div><div class="a-price">${esc(a.kind === "penny_on_shelf" ? "$0.01" : priceOf(a.message) || "–")}</div><div class="a-kind">${a.kind === "penny_on_shelf" ? "Penny" : "Close"}</div></div>
+        <div><div class="a-name">${esc(a.name || a.item_id)}</div><div class="a-where">${esc(SHORT[a.retailer] || a.retailer)} ${esc(storeName(a.retailer, a.store_name) || a.store_id)} · ${esc(ago(a.ts))}</div></div></div>`).join("")}
+      </details>` : "";
+    $(".alerts")?.addEventListener("toggle", (e) => { if (e.target.open) api("/api/alerts/seen", {}).catch(() => {}); });
     const q = new URLSearchParams();
     if ($("#fRetailer").value) q.set("retailer", $("#fRetailer").value);
     if ($("#fStore").value) q.set("store", $("#fStore").value);
@@ -92,23 +124,30 @@
     q.set("min_score", "25");
     q.set("sort", $("#fSort").value || "score");
     const rows = await api(`/api/predictions?${q}`);
-    $("#ranked").innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty"><i>search</i>Nothing scored yet. Run <b>Verify</b> or a <b>Sweep</b> from Settings.</div>`;
+    $("#ranked").innerHTML = rows.length ? rows.map(card).join("")
+      : `<div class="empty"><i>sell</i>Nothing near a penny matches these filters.<br>Run <b>Verify</b> or a <b>Sweep</b> from Setup to look again.</div>`;
   }
   ["#fRetailer", "#fStore", "#fStage", "#fSort", "#fType"].forEach((s) => $(s).addEventListener("change", loadHome));
 
   function card(r) {
     const eff = r.clearance_price ?? r.price;
+    const pen = isPenny(eff);
     const reasons = (() => { try { return JSON.parse(r.reasons || "[]"); } catch { return []; } })();
-    return `<article class="card" data-item="${esc(r.retailer)}/${esc(r.item_id)}">
-      <div class="head"><span class="score ${esc(r.stage)}">${r.score}</span><span class="title">${esc(r.name || r.item_id)}</span></div>
-      <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.store_name || r.store_id)} ·
-        <span class="price ${eff != null && eff <= 0.01 ? "penny" : ""}">${money(eff)}</span>${r.msrp && r.msrp !== eff ? `<span class="strike" title="MSRP">${money(r.msrp)}</span>` : ""}
-        · qty ${r.qty ?? "?"} · ${esc(ago(r.observed_at))}
-        ${r.store_status === "CLEARANCE" ? '<span class="tag clr">CLEARANCE</span>' : ""}${r.store_status === "PENNY" ? '<span class="tag penny">PENNY</span>' : ""}
-        ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
-        ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""}</div>
-      ${pennyWhen(r)}
-      <div class="reasons">${esc(reasons.slice(0, 4).join(" · "))}</div></article>`;
+    const why = pen ? reasons.filter((x) => !/register price/.test(x)) : reasons;
+    return `<article class="tag ${pen ? "penny" : ""} ${esc(r.stage)}" data-item="${esc(r.retailer)}/${esc(r.item_id)}">
+      <div class="price-block">
+        ${pen ? `<div class="stamp">Rings up</div>` : ""}
+        ${bigPrice(eff)}
+        ${r.msrp && r.msrp !== eff ? `<div class="was-label">Was</div><div class="was">${money(r.msrp)}</div>` : ""}
+      </div>
+      <div class="body">
+        <div class="score"><b>${r.score}</b>${meter(r.score)}<div class="stage-label">${esc(STAGE[r.stage] || r.stage)}</div></div>
+        <div class="name">${esc(r.name || r.item_id)}</div>
+        <div class="where"><b>${esc(SHORT[r.retailer] || r.retailer)}</b> ${esc(storeName(r.retailer, r.store_name) || r.store_id)} · qty ${r.qty ?? "?"} · ${esc(ago(r.observed_at))}</div>
+        ${pennyWhen(r)}
+        ${why.length ? `<div class="why">${esc(why.slice(0, 3).join(" · "))}</div>` : ""}
+        ${codes(r)}
+      </div></article>`;
   }
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-item]");
@@ -118,31 +157,45 @@
   // ---- item ----
   async function openItem(retailer, itemId) {
     showTab("item");
-    $("#itemView").innerHTML = `<p class="muted">Loading…</p>`;
+    $("#itemView").innerHTML = `<p class="muted mono">Loading…</p>`;
     const d = await api(`/api/item/${retailer}/${itemId}`);
     const it = d.item;
-    const latest = d.latest.map((o) => `<article class="card">
-      <div class="head"><span class="score ${esc(o.stage || "watch")}">${o.score ?? "–"}</span><span class="title">${esc(o.store_name || o.store_id)}</span></div>
-      <div class="meta"><span class="price ${o.price != null && o.price <= 0.01 ? "penny" : ""}">${money(o.clearance_price ?? o.price)}</span>${o.original ? `<span class="strike">${money(o.original)}</span>` : ""}
-        · qty ${o.qty ?? "?"} · ${esc(o.store_status || "")} ${esc(o.promo || "")} · ${esc(ago(o.ts))}</div>
-      ${pennyWhen({ penny: o.penny, first_reported: d.first_reported })}
-      <div class="reasons">${esc((o.reasons || []).join(" · "))}</div></article>`).join("");
-    const hist = d.history.slice(0, 60).map((h) => `<tr><td>${new Date(h.ts * 1000).toLocaleString()}</td><td>${esc(h.store_id)}</td>
-      <td class="price">${money(h.price)}</td><td>${money(h.clearance_price)}</td><td>${h.qty ?? ""}</td><td>${esc(h.store_status || "")}</td></tr>`).join("");
-    const reps = d.reports.map((r) => `<div class="small-text">${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))} · ${esc(r.store_hint || "")} ${r.url ? `<a href="${esc(r.url)}" target="_blank">source</a>` : ""}</div>`).join("");
+    const latest = d.latest.map((o) => {
+      const eff = o.clearance_price ?? o.price;
+      const pen = isPenny(eff);
+      return `<article class="tag ${pen ? "penny" : ""}" style="cursor:default">
+        <div class="price-block">${pen ? `<div class="stamp">Rings up</div>` : ""}${bigPrice(eff)}${o.original ? `<div class="was-label">Was</div><div class="was">${money(o.original)}</div>` : ""}</div>
+        <div class="body">
+          <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
+          <div class="name">${esc(o.store_name || o.store_id)}</div>
+          <div class="where">qty ${o.qty ?? "?"} · ${esc(o.store_status || "")} ${esc(o.promo || "")} · checked ${esc(ago(o.ts))}</div>
+          ${pennyWhen({ penny: o.penny, first_reported: d.first_reported })}
+          ${(o.reasons || []).length ? `<div class="why">${esc(o.reasons.slice(0, 4).join(" · "))}</div>` : ""}
+        </div></article>`;
+    }).join("");
+    const hist = d.history.slice(0, 80).map((h) => `<tr class="${isPenny(h.price) ? "pen" : ""}"><td>${new Date(h.ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
+      <td>${esc(h.store_id)}</td><td>${money(h.price)}</td><td>${money(h.clearance_price)}</td><td>${h.qty ?? ""}</td><td>${esc(h.store_status || "")}</td></tr>`).join("");
+    const reps = d.reports.map((r) => `<div class="rep">${esc(r.source)} <span>· ${esc(day(r.first_reported_at || r.reported_at))}${r.store_hint ? ` · ${esc(r.store_hint)}` : ""}</span>
+      ${r.url ? ` <a href="${esc(r.url)}" target="_blank">source</a>` : ""}</div>`).join("");
     $("#itemView").innerHTML = `
-      <h5>${esc(it.name || it.item_id)}</h5>
-      <div class="kv"><span>Retailer</span><span>${esc(LABELS[retailer] || retailer)}</span>
-        <span>Item</span><span>${esc(it.item_id)}${it.sku ? ` · SKU ${esc(it.sku)}` : ""}${it.upc ? ` · UPC ${esc(it.upc)}` : ""}${it.model ? ` · ${esc(it.model)}` : ""}</span>
-        ${it.url ? `<span>Link</span><span><a href="${esc(it.url)}" target="_blank">${esc(it.url)}</a></span>` : ""}</div>
-      <div class="row" style="margin:8px 0">
-        <button class="border" id="recheck">Re-check now</button>
-        <button class="border" id="watchBtn">${d.watched ? "Unwatch" : "Watch"}</button></div>
-      <h6>At your stores</h6>${latest || '<div class="empty"><i>storefront</i>No observation yet.</div>'}
-      <h6>Community reports</h6>${reps || '<div class="empty"><i>forum</i>No community report for this one.</div>'}
-      <h6>History</h6><table class="hist"><tr><th>When</th><th>Store</th><th>Price</th><th>Clearance</th><th>Qty</th><th>Status</th></tr>${hist}</table>`;
+      <div class="item-head">
+        <div class="sec-head"><span class="sec-no">${esc(SHORT[retailer] || retailer)}</span><h2>${esc(LABELS[retailer] || retailer)}</h2></div>
+        <h1>${esc(it.name || it.item_id)}</h1>
+        <dl class="spec">
+          <dt>Item</dt><dd>${esc(it.item_id)}</dd>
+          ${it.sku ? `<dt>SKU</dt><dd>${esc(it.sku)}</dd>` : ""}
+          ${it.upc ? `<dt>UPC</dt><dd>${esc(it.upc)}</dd>` : ""}
+          ${it.model ? `<dt>Model</dt><dd>${esc(it.model)}</dd>` : ""}
+          ${it.ctype ? `<dt>Type</dt><dd>${esc(TYPES[it.ctype] || it.ctype)}</dd>` : ""}
+          ${it.url ? `<dt>Link</dt><dd><a href="${esc(it.url)}" target="_blank">${esc(it.url.replace(/^https?:\/\/(www\.)?/, ""))}</a></dd>` : ""}
+        </dl>
+        <div class="actions"><button class="btn solid" id="recheck">Re-check now</button><button class="btn" id="watchBtn">${d.watched ? "Stop watching" : "Watch"}</button></div>
+      </div>
+      <h3>At your stores</h3>${latest || '<div class="empty"><i>storefront</i>Not checked at any of your stores yet.</div>'}
+      <h3>Community reports</h3><div class="reports">${reps || '<div class="empty">No community report for this one.</div>'}</div>
+      <h3>Price history</h3><table class="hist"><tr><th>When</th><th>Store</th><th>Price</th><th>Clr</th><th>Qty</th><th>Status</th></tr>${hist}</table>`;
     $("#recheck").addEventListener("click", async () => {
-      snack("Checking…");
+      snack("Checking the shelves…");
       await api("/api/lookup", { retailer, item_id: itemId });
       openItem(retailer, itemId);
     });
@@ -157,26 +210,31 @@
     code = (code || $("#scanInput").value).replace(/\D/g, "");
     if (!code) return;
     $("#scanInput").value = code;
-    $("#scanOut").innerHTML = `<p class="muted">Looking up ${esc(code)}…</p>`;
+    $("#scanOut").innerHTML = `<p class="muted mono">Looking up ${esc(code)}…</p>`;
     const body = { retailer: $("#scanRetailer").value || undefined, store_id: $("#scanStore").value || undefined };
     if (code.length >= 11 && code.length <= 13) body.upc = code; else body.sku = code;
     let d;
-    try { d = await api("/api/lookup", body); } catch (e) { $("#scanOut").innerHTML = `<p class="tag err">${esc(e.message)}</p>`; return; }
-    if (!d.ok) { $("#scanOut").innerHTML = `<p><span class="tag err">${esc(d.why)}</span></p>`; return; }
-    $("#scanOut").innerHTML = d.results.map((o) => o.error
-      ? `<article class="card"><div class="title">${esc(LABELS[o.retailer] || o.retailer)} ${esc(o.store_id)}</div><div class="meta"><span class="tag err">${esc(o.error)}</span></div></article>`
-      : `<article class="card" data-item="${esc(o.retailer)}/${esc(o.item_id)}">
-          <div class="head"><span class="score ${esc(o.stage || "watch")}">${o.score ?? "–"}</span><span class="title">${esc(o.name || o.item_id)}</span></div>
-          <div class="meta">${esc(LABELS[o.retailer] || o.retailer)} · ${esc(o.store_name || o.store_id)} ·
-            <span class="price ${o.price != null && o.price <= 0.01 ? "penny" : ""}">${money(o.clearance_price ?? o.price)}</span>${o.original ? `<span class="strike">${money(o.original)}</span>` : ""}
-            · qty ${o.qty ?? "?"} ${o.store_status ? `<span class="tag ${o.store_status === "PENNY" ? "penny" : "clr"}">${esc(o.store_status)}</span>` : ""}</div>
-          <div class="reasons">${esc((o.reasons || []).join(" · "))}</div></article>`).join("");
+    try { d = await api("/api/lookup", body); } catch (e) { $("#scanOut").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    if (!d.ok) { $("#scanOut").innerHTML = `<div class="empty"><i>help</i>${esc(d.why)}</div>`; return; }
+    $("#scanOut").innerHTML = d.results.map((o) => {
+      if (o.error) return `<div class="empty" style="text-align:left"><b>${esc(LABELS[o.retailer] || o.retailer)} ${esc(o.store_id)}</b> · ${esc(o.error)}</div>`;
+      const eff = o.clearance_price ?? o.price;
+      const pen = isPenny(eff);
+      return `<article class="tag ${pen ? "penny" : ""}" data-item="${esc(o.retailer)}/${esc(o.item_id)}">
+        <div class="price-block">${pen ? `<div class="stamp">Rings up</div>` : ""}${bigPrice(eff)}${o.original ? `<div class="was-label">Was</div><div class="was">${money(o.original)}</div>` : ""}</div>
+        <div class="body">
+          <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
+          <div class="name">${esc(o.name || o.item_id)}</div>
+          <div class="where"><b>${esc(SHORT[o.retailer] || o.retailer)}</b> ${esc(storeName(o.retailer, o.store_name) || o.store_id)} · qty ${o.qty ?? "?"}</div>
+          ${(o.reasons || []).length ? `<div class="why">${esc(o.reasons.slice(0, 3).join(" · "))}</div>` : ""}
+        </div></article>`;
+    }).join("");
   }
   $("#scanGo").addEventListener("click", () => doLookup());
   $("#scanInput").addEventListener("keydown", (e) => { if (e.key === "Enter") doLookup(); });
   window.pennyScan = (code) => { showTab("scan"); doLookup(code); };
 
-  // ---- lists ----
+  // ---- lists: report cards with a receipt of local stock ----
   async function loadLists() {
     const q = new URLSearchParams();
     if ($("#lRetailer").value) q.set("retailer", $("#lRetailer").value);
@@ -184,16 +242,27 @@
     q.set("sort", $("#lSort").value || "recent");
     const rows = await api(`/api/reports?${q}`);
     $("#lists").innerHTML = rows.slice(0, 400).map((r) => {
-      const local = (r.local || []).map((o) => `<span class="tag ${o.price != null && o.price <= 0.01 ? "penny" : (o.qty > 0 ? "ok" : "")}">${esc(o.store_name)}: ${money(o.price)} · qty ${o.qty ?? "?"}</span>`).join("");
+      const carried = (r.local || []).filter((o) => o.price != null);
+      const notCarried = (r.local || []).length - carried.length;
+      const local = carried.map((o) => {
+        const cls = isPenny(o.price) ? "pen" : (o.qty > 0 ? "hit" : "");
+        return `<div class="line ${cls}"><span class="st">${esc((o.store_name || "").toUpperCase())}</span><span class="fill"></span><span>${money(o.price)} · QTY ${o.qty ?? "?"}</span></div>`;
+      }).join("") + (notCarried ? `<div class="line none"><span class="st">NOT CARRIED AT ${notCarried} STORE${notCarried === 1 ? "" : "S"}</span></div>` : "");
       const link = r.item_id ? `data-item="${esc(r.retailer)}/${esc(r.item_id)}"` : (r.retailer === "dollargeneral" && r.upc ? `data-item="dollargeneral/${esc(r.upc.replace(/^0+/, ""))}"` : "");
-      return `<article class="card" ${link}>
-        <div class="title">${esc(r.name || r.sku || r.upc)}</div>
-        <div class="meta">${esc(LABELS[r.retailer] || r.retailer)} · ${esc(r.source)} · ${esc(ago(r.reported_at || r.fetched_at))}${r.retail ? ` · <span title="MSRP">MSRP ${money(r.retail)}</span>` : ""}
-          ${r.ctype && r.ctype !== "other" ? `<span class="tag type">${esc(TYPES[r.ctype] || r.ctype)}</span>` : ""}
-          ${r.sku ? `<span class="tag">SKU ${esc(r.sku)}</span>` : ""}${r.upc ? `<span class="tag">UPC ${esc(r.upc)}</span>` : ""} ${esc(r.store_hint || "")}</div>
-        ${r.first_reported_at ? `<div class="when"><i>schedule</i>first reported pennied ${esc(day(r.first_reported_at))}${r.reported_at && day(r.reported_at) !== day(r.first_reported_at) ? `, last seen ${esc(day(r.reported_at))}` : ""}</div>` : ""}
-        <div class="reasons">${local || '<span class="muted">not checked at your stores yet</span>'}</div></article>`;
-    }).join("") || `<div class="empty"><i>list_alt</i>No reports pulled yet.</div>`;
+      return `<article class="tag" ${link}>
+        <div class="price-block">
+          <div class="stamp" style="font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:2px">Pennied</div>
+          <div class="now" style="font-size:24px">${esc(day(r.first_reported_at || r.reported_at) || "&mdash;")}</div>
+          ${r.retail ? `<div class="was-label">Was</div><div class="was">${money(r.retail)}</div>` : ""}
+        </div>
+        <div class="body">
+          <div class="name" style="margin-right:0">${esc(r.name || r.sku || r.upc)}</div>
+          <div class="where"><b>${esc(SHORT[r.retailer] || r.retailer)}</b> ${esc(r.source)} · last seen ${esc(ago(r.reported_at || r.fetched_at))}</div>
+          ${r.store_hint ? `<div class="why">${esc(r.store_hint)}</div>` : ""}
+          ${codes(r)}
+          <div class="receipt">${local || '<span class="muted">Not checked at your stores yet</span>'}</div>
+        </div></article>`;
+    }).join("") || `<div class="empty"><i>receipt_long</i>No reports pulled yet.</div>`;
   }
   ["#lRetailer", "#lSort", "#lType"].forEach((s) => $(s).addEventListener("change", loadLists));
   $("#runSources").addEventListener("click", () => runJob("sources"));
@@ -211,30 +280,31 @@
     const lanes = state.status?.lanes || {};
     const sw = state.status?.sweeps || {};
     const src = state.status?.sources || {};
-    const runs = (state.status?.runs || []).slice(0, 6).map((r) => `<div class="small-text">${esc(r.kind)} · ${esc(ago(r.started))} · ${r.ok == null ? "running" : (r.ok ? "ok" : "failed")}</div>`).join("");
+    const runs = (state.status?.runs || []).slice(0, 6).map((r) => `<div class="row-line"><span class="grow">${esc(r.kind)}</span>
+      <span class="sub">${esc(ago(r.started))} · ${r.ok == null ? "running" : (r.ok ? "ok" : "failed")}</span></div>`).join("");
     $("#settings").innerHTML = `
-      <h6>Jobs</h6>
-      <div class="group"><div class="row wrap">
-        <button class="border small" data-job="sources">Pull lists</button>
-        <button class="border small" data-job="verify">Verify reports at my stores</button>
-        <button class="border small" data-job="sweep">Sweep Home Depot clearance</button>
-        <button class="border small" data-job="predict">Re-score</button>
-        <button class="border small" data-job="all">Everything</button></div>
-      ${runs}</div>
-      <h6>Sources</h6>
-      ${Object.entries(src).map(([k, v]) => `<div class="small-text">${esc(k)}: ${v.seen} seen, ${v.new} new · ${esc(ago(v.at))}</div>`).join("") || '<p class="muted">Not pulled yet.</p>'}
-      <h6>Stores (zip ${esc(cfg.zip)}, ${esc(cfg.radius_miles)} mi)</h6>
-      ${Object.entries(byR).map(([r, list]) => `<div class="group"><b>${esc(LABELS[r] || r)}</b>${lanes[r]?.can_sweep ? ' <span class="tag">sweepable</span>' : ""}
-        ${list.map((s) => `<div class="store-row"><input type="checkbox" data-store="${esc(r)}/${esc(s.store_id)}" ${s.watched ? "checked" : ""}>
-          <label>${esc(s.name)} <span class="muted">${esc(s.store_id)}${s.distance != null ? ` · ${Number(s.distance).toFixed(1)} mi` : ""}${sw[`${r}:${s.store_id}`] ? ` · swept ${esc(ago(sw[`${r}:${s.store_id}`].at))} (${sw[`${r}:${s.store_id}`].n})` : ""}</span></label></div>`).join("")}</div>`).join("")}
-      <div class="row" style="margin-top:8px"><select id="addRetailer" class="field small border">${Object.keys(LABELS).map((k) => `<option value="${k}">${esc(LABELS[k])}</option>`).join("")}</select>
-        <input id="addStoreId" class="field small border" placeholder="store id" style="max-width:120px"><input id="addStoreName" class="field small border" placeholder="name">
-        <button class="border small" id="addStore">Add store</button></div>
-      <h6>Phone access</h6>
-      ${remote ? `<div class="group"><div class="kv"><span>Tunnel</span><span>${esc(remote.tunnel?.url || remote.tunnel?.error || "starting…")}</span>
-        <span>Discovery</span><span>${esc(remote.discovery || "not published (no Cloudflare creds)")}</span></div>
-        <div style="margin:8px 0"><img id="pairQr" alt="pairing QR" width="200" height="200"></div>
-        <p class="small-text muted">Scan with the Penny Lane iPhone app. The QR carries the token; keep it private.</p></div>` : '<p class="muted">Remote access not available in this session.</p>'}`;
+      <h3>Run now</h3>
+      <div class="actions">
+        <button class="btn" data-job="sources">Pull lists</button>
+        <button class="btn" data-job="verify">Verify at my stores</button>
+        <button class="btn" data-job="sweep">Sweep Home Depot</button>
+        <button class="btn" data-job="predict">Re-score</button>
+        <button class="btn solid" data-job="all">Everything</button></div>
+      <div class="panel">${runs || '<div class="row-line muted">No runs yet.</div>'}</div>
+      <h3>Sources</h3>
+      <div class="panel">${Object.entries(src).map(([k, v]) => `<div class="row-line"><span class="grow">${esc(k)}</span><span class="sub">${v.seen} seen · ${v.new} new · ${esc(ago(v.at))}</span></div>`).join("") || '<div class="row-line muted">Not pulled yet.</div>'}</div>
+      <h3>Stores · zip ${esc(cfg.zip)} · ${esc(cfg.radius_miles)} mi</h3>
+      ${Object.entries(byR).map(([r, list]) => `<div class="panel"><div class="lane-name">${esc(LABELS[r] || r)}${lanes[r]?.can_sweep ? "<small>SWEEPABLE</small>" : ""}</div>
+        ${list.map((s) => `<label class="row-line"><input class="check" type="checkbox" data-store="${esc(r)}/${esc(s.store_id)}" ${s.watched ? "checked" : ""}>
+          <span class="grow">${esc(s.name)}</span><span class="sub">#${esc(s.store_id)}${s.distance != null ? ` · ${Number(s.distance).toFixed(1)} mi` : ""}${sw[`${r}:${s.store_id}`] ? ` · swept ${esc(ago(sw[`${r}:${s.store_id}`].at))}` : ""}</span></label>`).join("")}</div>`).join("")}
+      <div class="add-store"><select id="addRetailer">${Object.keys(LABELS).map((k) => `<option value="${k}">${esc(LABELS[k])}</option>`).join("")}</select>
+        <input id="addStoreId" placeholder="Store #"><input id="addStoreName" placeholder="Name" style="flex:1;min-width:120px">
+        <button class="btn" id="addStore">Add store</button></div>
+      <h3>Phone</h3>
+      ${remote ? `<div class="panel"><div class="row-line"><span class="grow">Tunnel</span><span class="sub">${esc(remote.tunnel?.url || remote.tunnel?.error || "starting…")}</span></div>
+        <div class="row-line"><span class="grow">Discovery</span><span class="sub">${remote.discovery ? "published" : "not published"}</span></div>
+        <div class="qr"><img id="pairQr" alt="pairing QR" width="180" height="180"></div>
+        <p class="lede" style="font-size:13px">Scan with the Penny Lane iPhone app. The code carries the access token, so keep it private.</p></div>` : '<p class="muted">Phone access is not available in this session.</p>'}`;
     $$("[data-job]").forEach((b) => b.addEventListener("click", () => runJob(b.dataset.job)));
     $$("[data-store]").forEach((cb) => cb.addEventListener("change", async () => {
       const [retailer, store_id] = cb.dataset.store.split("/");
@@ -251,6 +321,6 @@
     }
   }
 
-  loadStatus().then(() => showTab("home")).catch((e) => { $("#statusLine").textContent = e.message; });
+  loadStatus().then(() => showTab("home")).catch((e) => { $("#ticker").textContent = e.message; });
   setInterval(() => { if (!document.hidden) loadStatus().catch(() => {}); }, 60000);
 })();

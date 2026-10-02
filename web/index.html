@@ -3,67 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f1f3ff">
+<meta name="theme-color" content="#f4f1e8">
 <title>Penny Lane</title>
-<link rel="stylesheet" href="/static/vendor/beer.min.css">
 <link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="/static/icon.png">
 </head>
-<body class="light">
-<header class="fixed">
-  <nav>
-    <h6 class="max"><span class="coin">¢</span>Penny Lane</h6>
-    <span id="unseen" class="chip small primary hidden">0</span>
-    <button id="scanBtn" class="circle transparent" title="Scan a barcode"><i>barcode_scanner</i></button>
-    <button id="refreshBtn" class="circle transparent" title="Refresh"><i>refresh</i></button>
-  </nav>
+<body>
+<header class="mast">
+  <div class="mast-row">
+    <a class="brand" data-tab="home" href="#"><span class="coin">1<small>¢</small></span><span class="word">Penny&nbsp;Lane</span></a>
+    <span id="unseen" class="unseen hidden">0</span>
+    <button id="refreshBtn" class="icon-btn" title="Refresh"><i>refresh</i></button>
+    <button id="scanBtn" class="scan-btn" title="Scan a barcode"><i>barcode_scanner</i><span>Scan</span></button>
+  </div>
+  <div id="ticker" class="ticker"></div>
 </header>
 
-<main class="responsive">
+<main>
   <section id="tab-home" class="tab">
-    <div id="hero" class="hero"></div>
     <div id="alerts"></div>
-    <h5>Closest to a penny</h5>
-    <div class="row wrap" id="filters">
-      <select id="fRetailer" class="field"><option value="">All retailers</option></select>
-      <select id="fStore" class="field"><option value="">All stores</option></select>
-      <select id="fType" class="field"><option value="">Any type</option></select>
-      <select id="fStage" class="field">
-        <option value="">Any stage</option><option value="penny">Penny</option><option value="imminent">Imminent</option>
-        <option value="late">Late</option><option value="early">Early</option>
-      </select>
-      <select id="fSort" class="field">
-        <option value="score">Sort: score</option><option value="msrp">Sort: MSRP</option>
-        <option value="savings">Sort: savings</option><option value="recent">Sort: recent</option>
-      </select>
+    <div class="sec-head"><span class="sec-no">01</span><h2>On the shelf, near a penny</h2></div>
+    <div class="filters" id="filters">
+      <label class="pick"><span>Retailer</span><select id="fRetailer"><option value="">All</option></select></label>
+      <label class="pick"><span>Store</span><select id="fStore"><option value="">All</option></select></label>
+      <label class="pick"><span>Type</span><select id="fType"><option value="">Any</option></select></label>
+      <label class="pick"><span>Stage</span><select id="fStage">
+        <option value="">Any</option><option value="penny">Penny</option><option value="imminent">Imminent</option>
+        <option value="late">Late</option><option value="early">Early</option></select></label>
+      <label class="pick"><span>Sort</span><select id="fSort">
+        <option value="score">Score</option><option value="msrp">MSRP</option>
+        <option value="savings">Savings</option><option value="recent">Recent</option></select></label>
     </div>
     <div id="ranked"></div>
   </section>
 
   <section id="tab-scan" class="tab hidden">
-    <h5>Scan</h5>
-    <p class="muted small-text">Type or scan a UPC, a Home Depot SKU from the yellow tag, or a Lowe's item number. On the phone, the camera fills this in.</p>
-    <div class="row wrap">
-      <input id="scanInput" class="field max" inputmode="numeric" placeholder="UPC / SKU / item number" autocomplete="off">
-      <button id="scanGo" class="border primary-btn">Look up</button>
+    <div class="sec-head"><span class="sec-no">02</span><h2>Check a tag</h2></div>
+    <p class="lede">Type or scan a UPC, the SKU from a Home Depot yellow tag, or a Lowe's item number. On the phone, the camera fills this in.</p>
+    <div class="scanbox">
+      <input id="scanInput" inputmode="numeric" placeholder="0 00000 00000 0" autocomplete="off">
+      <button id="scanGo" class="btn solid">Look up</button>
     </div>
-    <div class="row wrap" style="margin-top:8px">
-      <select id="scanRetailer" class="field"><option value="">Any retailer</option></select>
-      <select id="scanStore" class="field"><option value="">All watched stores</option></select>
+    <div class="filters">
+      <label class="pick"><span>Retailer</span><select id="scanRetailer"><option value="">Any</option></select></label>
+      <label class="pick"><span>Store</span><select id="scanStore"><option value="">All watched</option></select></label>
     </div>
     <div id="scanOut"></div>
   </section>
 
   <section id="tab-lists" class="tab hidden">
-    <h5>Community lists</h5>
-    <div class="row wrap">
-      <select id="lRetailer" class="field"><option value="">All retailers</option></select>
-      <select id="lType" class="field"><option value="">Any type</option></select>
-      <select id="lSort" class="field">
-        <option value="recent">Sort: recent</option><option value="retail">Sort: MSRP</option><option value="stocked">Sort: stocked near me</option>
-      </select>
-      <button id="runSources" class="border">Pull lists now</button>
-      <button id="runVerify" class="border">Verify at my stores</button>
+    <div class="sec-head"><span class="sec-no">03</span><h2>What the community found</h2></div>
+    <div class="filters">
+      <label class="pick"><span>Retailer</span><select id="lRetailer"><option value="">All</option></select></label>
+      <label class="pick"><span>Type</span><select id="lType"><option value="">Any</option></select></label>
+      <label class="pick"><span>Sort</span><select id="lSort">
+        <option value="recent">Recent</option><option value="retail">MSRP</option><option value="stocked">Stocked near me</option></select></label>
+    </div>
+    <div class="actions">
+      <button id="runSources" class="btn">Pull lists now</button>
+      <button id="runVerify" class="btn">Verify at my stores</button>
     </div>
     <div id="lists"></div>
   </section>
@@ -71,19 +69,18 @@
   <section id="tab-item" class="tab hidden"><div id="itemView"></div></section>
 
   <section id="tab-settings" class="tab hidden">
-    <h5>Settings</h5>
+    <div class="sec-head"><span class="sec-no">04</span><h2>Settings</h2></div>
     <div id="settings"></div>
   </section>
 </main>
 
-<nav class="bottom">
-  <a data-tab="home"><i>home</i><div>Home</div></a>
-  <a data-tab="scan"><i>barcode_scanner</i><div>Scan</div></a>
-  <a data-tab="lists"><i>list_alt</i><div>Lists</div></a>
-  <a data-tab="settings"><i>settings</i><div>Settings</div></a>
+<nav class="tabbar">
+  <a data-tab="home"><i>sell</i><span>Shelf</span></a>
+  <a data-tab="scan"><i>barcode_scanner</i><span>Scan</span></a>
+  <a data-tab="lists"><i>receipt_long</i><span>Lists</span></a>
+  <a data-tab="settings"><i>tune</i><span>Setup</span></a>
 </nav>
-<div id="snack" class="snackbar"></div>
-<script type="module" src="/static/vendor/beer.min.js"></script>
+<div id="snack" class="snack"></div>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>

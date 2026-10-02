@@ -85,9 +85,12 @@ _COMPILED = [(t, re.compile(rx, re.I)) for t, rx in NAME_RULES]
 def classify(name: str = "", category: str = "", retailer: str = "") -> str:
     cat = (category or "").lower()
     if cat:
-        for t, keys in PATH_RULES:
-            if any(k in cat for k in keys):
-                return t
+        # Judge the top-level segment first ("Beauty/Hair Care/..." is beauty, even
+        # though "hair care" contains "air care"), then the full path.
+        for scope in (cat.split("/")[0].split("|")[0], cat):
+            for t, keys in PATH_RULES:
+                if any(k in scope for k in keys):
+                    return t
     n = f" {name or ''} "
     # Hardware chains sell no food, and "water", "bar" and "ice" are everywhere there.
     skip_food = retailer in ("homedepot", "lowes")

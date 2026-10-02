@@ -21,7 +21,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.89, green: 0.925, blue: 1.0).ignoresSafeArea()
+            Color(red: 0.957, green: 0.945, blue: 0.910).ignoresSafeArea()
             if conn.baseURL == nil {
                 PairingPrompt(showPairing: $showPairing)
             } else if let base = conn.baseURL {
