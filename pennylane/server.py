@@ -70,9 +70,11 @@ def predictions():
     sql = """SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
                     o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
                     COALESCE(o.original,
+                             (SELECT MAX(x.original) FROM observations x
+                                WHERE x.retailer=p.retailer AND x.item_id=p.item_id),
                              (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
                                 AND (r.item_id=p.item_id OR (i.sku<>'' AND r.sku=i.sku) OR (i.upc<>'' AND r.upc=i.upc))),
-                             CASE WHEN o.price > 0.01 THEN o.price END) AS msrp
+                             CASE WHEN o.price > 0.01 AND o.clearance_price IS NULL THEN o.price END) AS msrp
              FROM predictions p
              JOIN items i ON i.retailer=p.retailer AND i.item_id=p.item_id
              LEFT JOIN stores s ON s.retailer=p.retailer AND s.store_id=p.store_id

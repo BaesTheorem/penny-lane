@@ -280,15 +280,20 @@ def report_items(retailer=None, since_days=60) -> list[dict]:
 
 
 def msrp(retailer, item_id, latest: dict | None = None) -> float | None:
-    """Best known full price: the lane's original, else the community retail."""
+    """Best known full price: the lane's original, else the original any other
+    store reported (a store on clearance drops it), else the community retail.
+    The current price counts only when it is not a clearance price."""
     if latest and latest.get("original"):
         return float(latest["original"])
+    row = one("SELECT MAX(original) m FROM observations WHERE retailer=? AND item_id=?", (retailer, item_id))
+    if row and row.get("m"):
+        return float(row["m"])
     it = item(retailer, item_id) or {}
     row = one("""SELECT MAX(retail) m FROM reports WHERE retailer=? AND (item_id=? OR (?<>'' AND sku=?) OR (?<>'' AND upc=?))""",
               (retailer, item_id, it.get("sku") or "", it.get("sku") or "", it.get("upc") or "", it.get("upc") or ""))
     if row and row.get("m"):
         return float(row["m"])
-    if latest and latest.get("price") and latest["price"] > 0.01:
+    if latest and latest.get("price") and latest["price"] > 0.01 and not latest.get("clearance_price"):
         return float(latest["price"])
     return None
 
