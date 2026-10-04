@@ -163,6 +163,7 @@ def job_watch(cfg: dict) -> dict:
 def job_predict(cfg: dict, notify: bool = True) -> dict:
     out = {}
     min_score = int(cfg["notify"].get("min_score", 70))
+    fresh: list[dict] = []  # every new alert this run; sent as ONE digest at the end
     for st in db.watched_stores():
         ranked = detect.score_store(st["retailer"], st["store_id"])
         out[f"{st['retailer']}:{st['store_id']}"] = len(ranked)
@@ -180,17 +181,13 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
             msg = (f"{name} at {st['name']} ({st['retailer']}): score {r['score']}, {r['stage']}"
                    + (f", MSRP ${full:,.2f}" if full else "") + ". " + "; ".join(r["reasons"][:4]))
             db.add_alert(kind, st["retailer"], r["item_id"], st["store_id"], msg, r["score"])
-            if notify and cfg["notify"].get("enabled", True):
-                notify_mod.banner("Penny on the shelf" if kind == "penny_on_shelf" else "Penny Lane: imminent",
-                                  msg, it.get("url") or "", "reasons: " + " | ".join(r["reasons"]))
-                floor = float((cfg["notify"].get("discord") or {}).get("min_msrp", 100))
-                if kind == "penny_on_shelf" and full is not None and full >= floor:
-                    lt = r["latest"]
-                    notify_mod.discord(
-                        f"**Penny on the shelf**: {name}\n{st['name']} ({_label(st['retailer'])}), "
-                        f"MSRP ${full:,.2f}, register ${lt.get('price', 0):.2f}, qty {lt.get('qty', '?')}"
-                        + (f"\nSKU {it['sku']}" if it.get("sku") else "") + (f" · UPC {it['upc']}" if it.get("upc") else "")
-                        + (f"\n{it['url']}" if it.get("url") else ""), cfg)
+            lt = r["latest"]
+            fresh.append({"kind": kind, "name": name, "store": st["name"], "retailer": _label(st["retailer"]),
+                          "msrp": full, "price": lt.get("price"), "qty": lt.get("qty"),
+                          "sku": it.get("sku"), "upc": it.get("upc"), "url": it.get("url") or "",
+                          "score": r["score"]})
+    if fresh and notify and cfg["notify"].get("enabled", True):
+        notify_mod.digest(fresh, cfg)
     return out
 
 

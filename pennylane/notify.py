@@ -67,3 +67,34 @@ def banner(title: str, message: str, url: str = "", context: str = "") -> None:
         subprocess.run(cmd, timeout=15, check=False, capture_output=True)
     except Exception as e:  # noqa: BLE001
         log.warning("banner failed: %s", e)
+
+
+def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
+    """One banner and one Discord DM for a whole run, never one per item.
+
+    A run can raise 40+ alerts at once (a new community list lands on many
+    stores), so per-item sends flooded the banner history and the DM.
+    Pennies sort first, then by MSRP.
+    """
+    pennies = [a for a in alerts if a["kind"] == "penny_on_shelf"]
+    soon = [a for a in alerts if a["kind"] != "penny_on_shelf"]
+    alerts = sorted(alerts, key=lambda a: (a["kind"] != "penny_on_shelf", -(a["msrp"] or 0)))
+    head = f"{len(pennies)} new on the shelf at a penny, {len(soon)} likely to go soon"
+    best = alerts[0]
+    banner("Penny Lane", f"{head}. Top: {best['name']} at {best['store']}"
+           + (f" (MSRP ${best['msrp']:,.0f})" if best["msrp"] else ""),
+           "http://localhost:5033", "\n".join(f"{a['kind']}: {a['name']} at {a['store']}" for a in alerts[:40]))
+    lines = [f"**Penny Lane**: {head}"]
+    for a in alerts[:top]:
+        tag = "PENNY" if a["kind"] == "penny_on_shelf" else "soon"
+        line = f"- {tag}: {a['name']} at {a['store']} ({a['retailer']})"
+        if a["msrp"]:
+            line += f", MSRP ${a['msrp']:,.2f}"
+        if a["kind"] == "penny_on_shelf":
+            line += f", qty {a['qty'] if a['qty'] is not None else '?'}"
+            if a.get("sku"):
+                line += f", SKU {a['sku']}"
+        lines.append(line)
+    if len(alerts) > top:
+        lines.append(f"+{len(alerts) - top} more in the app")
+    discord("\n".join(lines), cfg)
