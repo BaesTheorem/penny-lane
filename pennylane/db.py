@@ -184,9 +184,11 @@ def add_alert(kind, retailer, item_id, store_id, message, score) -> int:
 
 
 def recent_alert_exists(kind, retailer, item_id, store_id, within_s=86400 * 3) -> bool:
+    """A penny is the last markdown, so a penny_on_shelf alert never repeats."""
+    since = 0 if kind == "penny_on_shelf" else time.time() - within_s
     row = connect().execute(
         "SELECT 1 FROM alerts WHERE kind=? AND retailer=? AND item_id=? AND store_id=? AND ts>? LIMIT 1",
-        (kind, retailer, item_id, store_id, time.time() - within_s)).fetchone()
+        (kind, retailer, item_id, store_id, since)).fetchone()
     return row is not None
 
 
