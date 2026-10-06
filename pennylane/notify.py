@@ -75,9 +75,12 @@ DEFAULT_MUTE = {
     "categories": ["Beauty", "Personal Care/Shaving", "Personal Care/Skin", "Cosmetics", "Skin Care"],
     # Whole-word name patterns, for items whose category is blank or junk ("Shop by Brand").
     "keywords": [r"razors?", r"shav\w*", r"lotion", r"moisturi\w+", r"skin ?care", r"serum", r"cleanser",
-                 r"sunscreen", r"spf", r"makeup", r"mascara", r"lipstick", r"lip (?:balm|gloss)", r"eyeliner",
+                 r"sunscreen", r"spf", r"makeup", r"mascara", r"lipstick", r"lip (?:balm|gloss)", r"eye ?liner",
                  r"beauty", r"liquid foundation", r"concealer", r"nail polish", r"hair colou?r",
-                 r"cosmetics?", r"facial", r"body wash", r"deodorant"],
+                 r"cosmetics?", r"facial", r"body wash", r"deodorant",
+                 # Skincare and cosmetics brands: their names often carry no product-type word.
+                 r"cetaphil", r"cerave", r"aveeno", r"nivea", r"olay", r"neutrogena", r"maybelline",
+                 r"covergirl", r"revlon", r"l'or[eé]al", r"garnier", r"palmer's", r"schick", r"gillette"],
 }
 
 
