@@ -181,6 +181,8 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
             msg = (f"{name} at {st['name']} ({st['retailer']}): score {r['score']}, {r['stage']}"
                    + (f", MSRP ${full:,.2f}" if full else "") + ". " + "; ".join(r["reasons"][:4]))
             db.add_alert(kind, st["retailer"], r["item_id"], st["store_id"], msg, r["score"])
+            if notify_mod.muted(name, it.get("category") or "", cfg):
+                continue
             lt = r["latest"]
             fresh.append({"kind": kind, "name": name, "store": st["name"], "retailer": _label(st["retailer"]),
                           "msrp": full, "price": lt.get("price"), "qty": lt.get("qty"),

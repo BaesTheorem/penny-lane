@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -67,6 +68,31 @@ def banner(title: str, message: str, url: str = "", context: str = "") -> None:
         subprocess.run(cmd, timeout=15, check=False, capture_output=True)
     except Exception as e:  # noqa: BLE001
         log.warning("banner failed: %s", e)
+
+
+DEFAULT_MUTE = {
+    # Category prefixes, matched case-insensitively against the item's category path.
+    "categories": ["Beauty", "Personal Care/Shaving", "Personal Care/Skin", "Cosmetics", "Skin Care"],
+    # Whole-word name patterns, for items whose category is blank or junk ("Shop by Brand").
+    "keywords": [r"razors?", r"shav\w*", r"lotion", r"moisturi\w+", r"skin ?care", r"serum", r"cleanser",
+                 r"sunscreen", r"spf", r"makeup", r"mascara", r"lipstick", r"lip (?:balm|gloss)", r"eyeliner",
+                 r"beauty", r"liquid foundation", r"concealer", r"nail polish", r"hair colou?r",
+                 r"cosmetics?", r"facial", r"body wash", r"deodorant"],
+}
+
+
+def muted(name: str, category: str, cfg: dict) -> bool:
+    """True when an alert is for a product type Alex asked not to hear about.
+
+    The alert still lands in the app; only the banner and the DM skip it.
+    `notify.mute` in config.json replaces DEFAULT_MUTE when present.
+    """
+    m = (cfg.get("notify") or {}).get("mute") or DEFAULT_MUTE
+    cat = (category or "").lower()
+    if any(cat.startswith(c.lower()) for c in m.get("categories", [])):
+        return True
+    words = m.get("keywords", [])
+    return bool(words) and re.search(r"\b(?:" + "|".join(words) + r")\b", name or "", re.I) is not None
 
 
 def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
