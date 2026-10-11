@@ -90,6 +90,10 @@ def _migrate(conn) -> None:
         if col not in icols:
             conn.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS items_ctype ON items(ctype)")
+    scols = {r[1] for r in conn.execute("PRAGMA table_info(stores)")}
+    if "published" not in scols:
+        # On the public site (publish.py): the metro set, chosen apart from what Alex watches.
+        conn.execute("ALTER TABLE stores ADD COLUMN published INTEGER DEFAULT 0")
     conn.commit()
 
 
@@ -238,6 +242,22 @@ def count(sql, params=()) -> int:
 def one(sql, params=()) -> dict | None:
     r = connect().execute(sql, params).fetchone()
     return dict(r) if r else None
+
+
+def published_stores(retailer=None) -> list[dict]:
+    if retailer:
+        return rows("SELECT * FROM stores WHERE published=1 AND retailer=? ORDER BY distance", (retailer,))
+    return rows("SELECT * FROM stores WHERE published=1 ORDER BY retailer, distance")
+
+
+def check_stores(retailer: str, with_published: bool) -> list[dict]:
+    """Stores a scan checks: the watched ones, plus the published metro set
+    for a lane the public site covers."""
+    out = {s["store_id"]: s for s in watched_stores(retailer)}
+    if with_published:
+        for s in published_stores(retailer):
+            out.setdefault(s["store_id"], s)
+    return list(out.values())
 
 
 def watched_stores(retailer=None) -> list[dict]:

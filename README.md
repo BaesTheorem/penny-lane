@@ -119,7 +119,35 @@ with one blue for actions and red only for the struck price. Fonts and the
 Material Symbols Sharp icon font are self-hosted in `web/static/vendor/`. No
 component framework: `web/static/app.css` is the whole design.
 
+## Public site (GitHub Pages)
+
+A read-only copy of the web UI runs at the repo's GitHub Pages address. A
+browser cannot check a shelf itself: Home Depot, Dollar General and Lowe's
+all refuse cross-origin requests (probed 2026-10-11). So the Mac checks a
+fixed metro store set and publishes the result as one JSON file; the page
+answers its `/api/*` calls from that file (`web/static/static-api.js`).
+
+- **Store set**: stores within `publish.radius_miles` of `publish.center_zip`
+  (Dollar General: `dg_radius_miles`), chosen apart from the watched set.
+  The verify and pulse jobs check Home Depot at all of them.
+- **Visitor settings**: location (Detect location or a zip), stores and
+  alert rules stay in the visitor's `localStorage`.
+- **Phone alerts**: a new penny on a published shelf posts to the ntfy
+  topic `<prefix>-<retailer>-<store>`. The first run records what is
+  already pennied and sends nothing.
+- **Deploy**: `pulse` and `all` end with `publish` when `publish.enabled` is
+  true. It builds `data/site/` and force-pushes one amended commit to
+  `gh-pages`, so the branch never grows.
+
+```bash
+bin/penny publish                # export, alert, deploy now
+```
+
 ## Privacy
 
 `config.json` (home zip, store ids), `data/` (database, remote token) and
-`ios/Config/Signing.xcconfig` are gitignored.
+`ios/Config/Signing.xcconfig` are gitignored. The public site does not
+show which stores are watched: its store set centers on `publish.center_zip`,
+Home Depot data there is limited to items checked the same way at every
+published store (sweep-only finds stay local), and the Dollar General
+register price is published per item with no store named.

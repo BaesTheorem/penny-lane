@@ -9,6 +9,8 @@
   predict  score everything observed recently; raise alerts
   pulse    hourly: re-check the hot set (reported, MSRP >= floor, or scoring
            high) at every watched store, then predict; Discord DM on a penny
+  publish  export the metro data to the GitHub Pages site (pulse and all
+           run it at the end when publish.enabled)
   all      sources, verify, watch, predict (sweep runs on --sweep)
 """
 
@@ -91,10 +93,15 @@ def _resolve_report_ids(lane, reports: list[dict]) -> list[str]:
     return sorted(set(ids))
 
 
+def _publishing(cfg: dict, key: str) -> bool:
+    p = cfg.get("publish") or {}
+    return bool(p.get("enabled")) and key in (p.get("check_lanes") or [])
+
+
 def job_verify(cfg: dict, days: int = 45) -> dict:
     out = {}
     for key, lane in registry().items():
-        stores = db.watched_stores(key)
+        stores = db.check_stores(key, _publishing(cfg, key))
         if not stores:
             continue
         reports = db.report_items(key, since_days=days)
@@ -205,7 +212,7 @@ def job_pulse(cfg: dict) -> dict:
     p = cfg.get("pulse") or {}
     for key in p.get("lanes") or ["homedepot", "dollargeneral"]:
         lane = registry().get(key)
-        stores = db.watched_stores(key)
+        stores = db.check_stores(key, _publishing(cfg, key))
         if not lane or not stores:
             continue
         ids = db.hot_items(key, float(p.get("min_msrp", 100)), int(p.get("min_score", 50)))
@@ -223,11 +230,24 @@ def job_pulse(cfg: dict) -> dict:
             time.sleep(lane.gap)
         out[key] = f"{len(ids)} hot items x {len(stores)} stores, {n} observations"
     out["predict"] = job_predict(cfg)
+    out["publish"] = _publish(cfg)
     return out
 
 
+def _publish(cfg: dict) -> dict | str:
+    """The public site refresh after a scan. Never fails the scan."""
+    if not (cfg.get("publish") or {}).get("enabled"):
+        return "off"
+    from . import publish
+    try:
+        return publish.run(cfg)
+    except Exception as e:  # noqa: BLE001 - the site is secondary to the scan
+        log.warning("publish failed: %s", e)
+        return f"error: {e}"[:200]
+
+
 JOBS = {"stores": job_stores, "sources": job_sources, "verify": job_verify, "sweep": job_sweep,
-        "watch": job_watch, "predict": job_predict, "pulse": job_pulse}
+        "watch": job_watch, "predict": job_predict, "pulse": job_pulse, "publish": _publish}
 
 
 def run(job: str, **kw) -> dict:
@@ -235,10 +255,11 @@ def run(job: str, **kw) -> dict:
     run_id = db.start_run(job)
     try:
         if job == "all":
-            res = {"sources": job_sources(cfg), "verify": job_verify(cfg), "watch": job_watch(cfg)}
+            res: dict = {"sources": job_sources(cfg), "verify": job_verify(cfg), "watch": job_watch(cfg)}
             if kw.get("sweep"):
                 res["sweep"] = job_sweep(cfg)
             res["predict"] = job_predict(cfg)
+            res["publish"] = _publish(cfg)
         else:
             res = JOBS[job](cfg, **kw)
         db.finish_run(run_id, True, str(res)[:2000])

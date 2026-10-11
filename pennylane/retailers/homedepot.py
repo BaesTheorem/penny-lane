@@ -101,7 +101,8 @@ class HomeDepot(Retailer):
 
     # ---- adapter ----
     @transport
-    def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
+    def stores_near(self, zip_code: str, radius: float = 25, lat: float | None = None,
+                    lon: float | None = None) -> list[Store]:
         # GraphQL first (it rides the 206 retry); the REST locator is the fallback.
         try:
             d = self.gql("storeSearch", STORES_Q, {"zipCode": zip_code, "radius": float(radius), "limit": 30})

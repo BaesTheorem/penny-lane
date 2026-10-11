@@ -36,6 +36,11 @@ DEFAULTS = {
     # and anything already scored >= pulse.min_score, at every watched store.
     "pulse": {"min_msrp": 100, "min_score": 50, "lanes": ["homedepot", "dollargeneral"]},
     "sweep": {"homedepot_pages": 400, "request_gap_s": 0.6},
+    # The public GitHub Pages site (publish.py). The store set centers on
+    # center_zip, not on Alex's zip, so the site does not show where he lives.
+    "publish": {"enabled": False, "center_zip": "64106", "radius_miles": 25, "dg_radius_miles": 10,
+                "check_lanes": ["homedepot"], "branch": "gh-pages", "history_per_store": 12,
+                "ntfy": {"enabled": True, "server": "https://ntfy.sh", "prefix": "pennylane-kc"}},
 }
 
 

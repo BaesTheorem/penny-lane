@@ -33,7 +33,8 @@ class Walmart(Retailer):
     def __init__(self):
         self.s = requests.Session(impersonate="chrome")
 
-    def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
+    def stores_near(self, zip_code: str, radius: float = 25, lat: float | None = None,
+                    lon: float | None = None) -> list[Store]:
         raise NotImplementedError("walmart store finder is bot-walled; add store ids by hand in Settings")
 
     @transport

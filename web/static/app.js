@@ -10,7 +10,10 @@
   const TYPES = {};
   const STAGE = { penny: "On the shelf", imminent: "Imminent", late: "Late markdown", early: "Early markdown", watch: "Watching", gone: "Not on shelf" };
 
+  // The GitHub Pages copy sets PENNY_STATIC and loads static-api.js, which answers from published data.
+  const STATIC = !!window.PENNY_STATIC;
   const api = async (path, body) => {
+    if (STATIC) return window.pennyStatic.api(path, body);
     const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
     return r.json();
@@ -141,6 +144,11 @@
         <div><div class="a-price">${esc(a.kind === "penny_on_shelf" ? "$0.01" : priceOf(a.message) || "–")}</div><div class="a-kind">${a.kind === "penny_on_shelf" ? "Penny" : "Close"}</div></div>
         <div><div class="a-name">${esc(a.name || a.item_id)}</div><div class="a-where">${esc(SHORT[a.retailer] || a.retailer)} ${esc(storeName(a.retailer, a.store_name) || a.store_id)} · ${esc(ago(a.ts))}</div></div></div>`).join("")}
       </details>` : "";
+    if (STATIC && window.pennyStatic.prefs().lat == null) {
+      $("#alerts").insertAdjacentHTML("afterbegin", `<div class="alert" data-tab-go="settings"><i>location_on</i><div class="t"><b>Set your location</b><br>
+        These are downtown Kansas City stores. Tap to pick yours and set alerts.</div></div>`);
+      $("[data-tab-go]").addEventListener("click", () => showTab("settings"));
+    }
     $(".alerts")?.addEventListener("toggle", (e) => { if (e.target.open) api("/api/alerts/seen", {}).catch(() => {}); });
     const q = new URLSearchParams();
     if ($("#fRetailer").value) q.set("retailer", $("#fRetailer").value);
@@ -197,7 +205,9 @@
   async function openItem(retailer, itemId) {
     showTab("item");
     $("#itemView").innerHTML = `<p class="muted mono">Loading…</p>`;
-    const d = await api(`/api/item/${retailer}/${itemId}`);
+    let d;
+    try { d = await api(`/api/item/${retailer}/${itemId}`); }
+    catch (e) { $("#itemView").innerHTML = `<div class="empty"><i>help</i>${esc(e.message)}</div>`; return; }
     const it = d.item;
     const latest = d.latest.map((o) => {
       const eff = o.clearance_price ?? o.price;
@@ -228,12 +238,12 @@
           ${it.ctype ? `<dt>Type</dt><dd>${esc(TYPES[it.ctype] || it.ctype)}</dd>` : ""}
           ${it.url ? `<dt>Link</dt><dd><a href="${esc(it.url)}" target="_blank">${esc(it.url.replace(/^https?:\/\/(www\.)?/, ""))}</a></dd>` : ""}
         </dl>
-        <div class="actions"><button class="btn solid" id="recheck">Re-check now</button><button class="btn" id="watchBtn">${d.watched ? "Stop watching" : "Watch"}</button></div>
+        <div class="actions">${STATIC ? "" : '<button class="btn solid" id="recheck">Re-check now</button>'}<button class="btn" id="watchBtn">${d.watched ? "Stop watching" : "Watch"}</button></div>
       </div>
       <h3>At your stores</h3>${latest || '<div class="empty"><i>storefront</i>Not checked at any of your stores yet.</div>'}
       <h3>Community reports</h3><div class="reports">${reps || '<div class="empty">No community report for this one.</div>'}</div>
       <h3>Price history</h3><table class="hist"><tr><th>When</th><th>Store</th><th>Price</th><th>Clr</th><th>Qty</th><th>Status</th></tr>${hist}</table>`;
-    $("#recheck").addEventListener("click", async () => {
+    $("#recheck")?.addEventListener("click", async () => {
       snack("Checking the shelves…");
       await api("/api/lookup", { retailer, item_id: itemId });
       openItem(retailer, itemId);
@@ -309,8 +319,11 @@
     }).join("") || `<div class="empty"><i>receipt_long</i>No reports pulled yet.</div>`;
   }
   ["#lRetailer", "#lSort", "#lType"].forEach((s) => $(s).addEventListener("change", loadLists));
-  $("#runSources").addEventListener("click", () => runJob("sources"));
-  $("#runVerify").addEventListener("click", () => runJob("verify"));
+  if (STATIC) $("#runSources").parentElement.remove();
+  else {
+    $("#runSources").addEventListener("click", () => runJob("sources"));
+    $("#runVerify").addEventListener("click", () => runJob("verify"));
+  }
   async function runJob(job, extra = "") {
     const d = await api(`/api/run/${job}${extra}`, {});
     snack(d.ok ? `${job} started` : d.why);
@@ -318,7 +331,8 @@
 
   // ---- settings ----
   async function loadSettings() {
-    const [stores, cfg, remote] = await Promise.all([api("/api/stores"), api("/api/config"), api("/remote/status").catch(() => null)]);
+    const [stores, cfg, remote] = await Promise.all([api("/api/stores"), api("/api/config"),
+      STATIC ? null : api("/remote/status").catch(() => null)]);
     const byR = {};
     for (const s of stores) (byR[s.retailer] ||= []).push(s);
     const lanes = state.status?.lanes || {};
@@ -326,7 +340,7 @@
     const src = state.status?.sources || {};
     const runs = (state.status?.runs || []).slice(0, 6).map((r) => `<div class="row-line"><span class="grow">${esc(r.kind)}</span>
       <span class="sub">${esc(ago(r.started))} · ${r.ok == null ? "running" : (r.ok ? "ok" : "failed")}</span></div>`).join("");
-    $("#settings").innerHTML = `
+    const localTop = STATIC ? "" : `
       <h3>Run now</h3>
       <div class="actions">
         <button class="btn" data-job="sources">Pull lists</button>
@@ -336,38 +350,42 @@
         <button class="btn solid" data-job="all">Everything</button></div>
       <div class="panel">${runs || '<div class="row-line muted">No runs yet.</div>'}</div>
       <h3>Sources</h3>
-      <div class="panel">${Object.entries(src).map(([k, v]) => `<div class="row-line"><span class="grow">${esc(k)}</span><span class="sub">${v.seen} seen · ${v.new} new · ${esc(ago(v.at))}</span></div>`).join("") || '<div class="row-line muted">Not pulled yet.</div>'}</div>
+      <div class="panel">${Object.entries(src).map(([k, v]) => `<div class="row-line"><span class="grow">${esc(k)}</span><span class="sub">${v.seen} seen · ${v.new} new · ${esc(ago(v.at))}</span></div>`).join("") || '<div class="row-line muted">Not pulled yet.</div>'}</div>`;
+    $("#settings").innerHTML = `${localTop}
       <h3>Location</h3>
       <div class="panel loc">
-        <div class="row-line"><i>location_on</i><span class="grow"><b>${esc(cfg.location?.label || "Zip " + cfg.zip)}</b></span>
-          <span class="sub">zip ${esc(cfg.zip)} · ${esc(cfg.radius_miles)} mi</span></div>
+        <div class="row-line"><i>location_on</i><span class="grow"><b>${esc(cfg.location?.label || (cfg.zip ? "Zip " + cfg.zip : "Not set: showing downtown Kansas City"))}</b></span>
+          <span class="sub">${cfg.zip ? `zip ${esc(cfg.zip)} · ` : ""}${esc(cfg.radius_miles)} mi</span></div>
         <div class="loc-form">
           <button class="btn solid" id="locDetect"><i>my_location</i> Detect location</button>
           <input id="locZip" inputmode="numeric" maxlength="5" placeholder="Zip code" value="">
           <select id="locRadius">${[5, 10, 15, 25, 50].map((m) => `<option value="${m}" ${Number(cfg.radius_miles) === m ? "selected" : ""}>${m} mi</option>`).join("")}</select>
           <button class="btn" id="locSet">Use zip</button>
         </div>
-        <p class="lede loc-note">A move watches the nearest stores per retailer, as many as you watch now (at least 3). Walmart stores stay as you set them.</p>
+        <p class="lede loc-note">${STATIC
+          ? "Your location stays in this browser. A move picks the 3 nearest stores per retailer. This site checks Kansas City area stores only."
+          : "A move watches the nearest stores per retailer, as many as you watch now (at least 3). Walmart stores stay as you set them."}</p>
       </div>
       <h3>Stores</h3>
       ${Object.entries(byR).map(([r, list]) => `<div class="panel"><div class="lane-name">${esc(LABELS[r] || r)}${lanes[r]?.can_sweep ? "<small>SWEEPABLE</small>" : ""}</div>
         ${list.map((s) => `<label class="row-line"><input class="check" type="checkbox" data-store="${esc(r)}/${esc(s.store_id)}" ${s.watched ? "checked" : ""}>
           <span class="grow">${esc(s.name)}</span><span class="sub">#${esc(s.store_id)}${s.distance != null ? ` · ${Number(s.distance).toFixed(1)} mi` : ""}${sw[`${r}:${s.store_id}`] ? ` · swept ${esc(ago(sw[`${r}:${s.store_id}`].at))}` : ""}</span></label>`).join("")}</div>`).join("")}
-      <div class="add-store"><select id="addRetailer">${Object.keys(LABELS).map((k) => `<option value="${k}">${esc(LABELS[k])}</option>`).join("")}</select>
+      ${STATIC ? staticPanels() : `<div class="add-store"><select id="addRetailer">${Object.keys(LABELS).map((k) => `<option value="${k}">${esc(LABELS[k])}</option>`).join("")}</select>
         <input id="addStoreId" placeholder="Store #"><input id="addStoreName" placeholder="Name" style="flex:1;min-width:120px">
         <button class="btn" id="addStore">Add store</button></div>
       <h3>Phone</h3>
       ${remote ? `<div class="panel"><div class="row-line"><span class="grow">Tunnel</span><span class="sub">${esc(remote.tunnel?.url || remote.tunnel?.error || "starting…")}</span></div>
         <div class="row-line"><span class="grow">Discovery</span><span class="sub">${remote.discovery ? "published" : "not published"}</span></div>
         <div class="qr"><img id="pairQr" alt="pairing QR" width="180" height="180"></div>
-        <p class="lede" style="font-size:13px">Scan with the Penny Lane iPhone app. The code carries the access token, so keep it private.</p></div>` : '<p class="muted">Phone access is not available in this session.</p>'}`;
+        <p class="lede" style="font-size:13px">Scan with the Penny Lane iPhone app. The code carries the access token, so keep it private.</p></div>` : '<p class="muted">Phone access is not available in this session.</p>'}`}`;
     $$("[data-job]").forEach((b) => b.addEventListener("click", () => runJob(b.dataset.job)));
     $$("[data-store]").forEach((cb) => cb.addEventListener("change", async () => {
       const [retailer, store_id] = cb.dataset.store.split("/");
       await api("/api/stores/watch", { retailer, store_id, watched: cb.checked });
       loadStatus();
     }));
-    $("#addStore").addEventListener("click", async () => {
+    if (STATIC) bindStaticPanels();
+    $("#addStore")?.addEventListener("click", async () => {
       await api("/api/stores/add", { retailer: $("#addRetailer").value, store_id: $("#addStoreId").value.trim(), name: $("#addStoreName").value.trim() });
       await loadStatus(); loadSettings();
     });
@@ -392,6 +410,57 @@
     }
   }
 
+  // ---- static site: alert rules and phone alerts, all kept in this browser ----
+  function staticPanels() {
+    const ps = window.pennyStatic;
+    const p = ps.prefs();
+    const a = p.alerts;
+    const meta = ps.meta() || {};
+    const perm = "Notification" in window ? Notification.permission : "unsupported";
+    const topics = ps.topics();
+    const server = meta.ntfy?.server || "https://ntfy.sh";
+    return `
+      <h3>Alerts</h3>
+      <div class="panel">
+        <label class="row-line"><input class="check" type="checkbox" id="alOn" ${a.enabled ? "checked" : ""}><span class="grow">Show alerts for my stores</span></label>
+        <label class="row-line"><span class="grow">Only when MSRP is at least</span>
+          <select id="alMsrp" class="mini">${[0, 10, 25, 50, 100, 250].map((m) => `<option value="${m}" ${a.minMsrp === m ? "selected" : ""}>${m ? "$" + m : "any"}</option>`).join("")}</select></label>
+        <label class="row-line"><input class="check" type="checkbox" id="alImm" ${a.imminent ? "checked" : ""}><span class="grow">Also when an item is close to a penny (score 70+)</span></label>
+        ${Object.keys(LABELS).filter((k) => k !== "walmart").map((k) => `<label class="row-line"><input class="check" type="checkbox" data-alr="${k}" ${!a.retailers.length || a.retailers.includes(k) ? "checked" : ""}><span class="grow">${esc(LABELS[k])}</span></label>`).join("")}
+        <div class="row-line"><span class="grow">Browser notifications while this page is open</span>
+          ${perm === "granted" ? `<label><input class="check" type="checkbox" id="alNotify" ${a.notify ? "checked" : ""}></label>`
+            : perm === "denied" ? '<span class="sub">blocked in browser settings</span>'
+            : perm === "unsupported" ? '<span class="sub">not supported here</span>'
+            : '<button class="btn" id="alAsk">Allow</button>'}</div>
+      </div>
+      <h3>Phone alerts</h3>
+      <div class="panel">
+        <p class="lede" style="font-size:13px;margin:10px 0">Get a push the moment a penny is on one of your shelves, with no account. Install the free <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a> app, then subscribe to your stores:</p>
+        ${topics.map((t) => `<div class="row-line"><span class="grow">${esc(SHORT[t.store.retailer] || t.store.retailer)} ${esc(storeName(t.store.retailer, t.store.name))}</span>
+          <a class="sub" href="${esc(server)}/${esc(t.topic)}" target="_blank" rel="noopener">${esc(t.topic)}</a></div>`).join("") || '<div class="row-line muted">Pick stores above first.</div>'}
+      </div>
+      <h3>About this copy</h3>
+      <div class="panel"><p class="lede" style="font-size:13px;margin:10px 0">A private server checks Kansas City area shelves and publishes the result here.
+        Last update ${esc(ago(meta.generated_at))}. Your location, stores and alert rules stay in this browser.
+        Barcode lookups search the published data only.</p></div>`;
+  }
+  function bindStaticPanels() {
+    const ps = window.pennyStatic;
+    const upd = (fn) => { const p = ps.prefs(); fn(p.alerts); ps.setPrefs(p); loadStatus(); };
+    $("#alOn").addEventListener("change", (e) => upd((a) => { a.enabled = e.target.checked; }));
+    $("#alMsrp").addEventListener("change", (e) => upd((a) => { a.minMsrp = Number(e.target.value); }));
+    $("#alImm").addEventListener("change", (e) => upd((a) => { a.imminent = e.target.checked; }));
+    $$("[data-alr]").forEach((cb) => cb.addEventListener("change", () => upd((a) => {
+      a.retailers = $$("[data-alr]").filter((x) => x.checked).map((x) => x.dataset.alr);
+    })));
+    $("#alNotify")?.addEventListener("change", (e) => upd((a) => { a.notify = e.target.checked; }));
+    $("#alAsk")?.addEventListener("click", async () => {
+      const r = await Notification.requestPermission();
+      if (r === "granted") upd((a) => { a.notify = true; });
+      loadSettings();
+    });
+  }
+
   async function relocate(where) {
     snack("Finding stores near you…");
     $$(".loc-form button").forEach((b) => (b.disabled = true));
@@ -401,12 +470,19 @@
     if (!d.ok) { snack(d.why); return loadSettings(); }
     const n = Object.values(d.lanes).reduce((a, l) => a + (l.watched?.length || 0), 0);
     const failed = Object.entries(d.lanes).filter(([, l]) => l.error).map(([k]) => LABELS[k] || k);
-    snack(`${d.place.label || d.place.zip}${d.place.source === "network" ? " (from the Mac's network)" : ""} · watching ${n} stores`
-      + (failed.length ? ` · ${failed.join(", ")} locator failed, stores kept` : ""));
+    snack(d.warn || (`${d.place.label || d.place.zip}${d.place.source === "network" ? " (from the Mac's network)" : ""} · watching ${n} stores`
+      + (failed.length ? ` · ${failed.join(", ")} locator failed, stores kept` : "")));
     await loadStatus();
     loadSettings();
   }
 
-  loadStatus().then(() => showTab("home")).catch((e) => { $("#ticker").textContent = e.message; });
+  // A link like #item/homedepot/204512007 (ntfy click) opens that item.
+  const deepLink = () => {
+    const m = location.hash.match(/^#item\/([^/]+)\/(.+)$/);
+    if (m) { openItem(m[1], decodeURIComponent(m[2])); return true; }
+    return false;
+  };
+  window.addEventListener("hashchange", deepLink);
+  loadStatus().then(() => { if (!deepLink()) showTab("home"); if (STATIC) window.pennyStatic.notifyNew(); }).catch((e) => { $("#ticker").textContent = e.message; });
   setInterval(() => { if (!document.hidden) loadStatus().catch(() => {}); }, 60000);
 })();

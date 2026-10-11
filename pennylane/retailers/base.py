@@ -93,7 +93,8 @@ class Retailer:
     # Whether stores_near also takes lat=, lon= (a device position beats a zip centroid).
     takes_point = False
 
-    def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
+    def stores_near(self, zip_code: str, radius: float = 25, lat: float | None = None,
+                    lon: float | None = None) -> list[Store]:
         raise NotImplementedError
 
     def lookup(self, item_id: str, store_id: str) -> Observation | None:

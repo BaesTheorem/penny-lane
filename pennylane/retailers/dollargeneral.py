@@ -57,6 +57,10 @@ class DollarGeneral(Retailer):
     @transport
     def _post(self, path: str, body: dict) -> dict | list:
         r = self.s.post(BASE + path, headers=self._auth(), json=body, timeout=25)
+        if r.status_code == 200 and not r.text.strip():
+            # The first call after a token bootstrap can come back empty; once more.
+            time.sleep(self.gap)
+            r = self.s.post(BASE + path, headers=self._auth(), json=body, timeout=25)
         if r.status_code in (403, 429):
             raise LaneBlocked(f"dollargeneral {r.status_code} on {path}")
         if r.status_code != 200 or not r.text.strip():
@@ -66,7 +70,8 @@ class DollarGeneral(Retailer):
     def stores_near(self, zip_code: str, radius: float = 25, lat=None, lon=None) -> list[Store]:
         if lat is None or lon is None:
             lat, lon = geocode_zip(zip_code)
-        d = self._post("/store/search/inventory", {"latitude": lat, "longitude": lon, "radius": radius})
+        # The locator answers 200 with an empty body for a decimal radius (10.0); send whole miles.
+        d = self._post("/store/search/inventory", {"latitude": lat, "longitude": lon, "radius": round(radius)})
         out = []
         for st in (d.get("stores") or []) if isinstance(d, dict) else []:
             out.append(Store(self.key, str(st["storeNumber"]),
@@ -74,6 +79,13 @@ class DollarGeneral(Retailer):
                              st.get("state", ""), st.get("zipCode", ""), st.get("latitude"), st.get("longitude"),
                              float(st["distance"]) if st.get("distance") is not None else None))
         return out
+
+    def stock_near(self, upc: str, lat: float, lon: float, radius: float = 25) -> list[dict]:
+        """Per-store stock rows for one UPC around a point: storeNumber,
+        productQTY, inventoryStatus. No price."""
+        d = self._post("/store/search/inventory", {"latitude": lat, "longitude": lon, "radius": round(radius),
+                                                   "upc": upc.zfill(12)})
+        return (d.get("stores") or []) if isinstance(d, dict) else []
 
     def lookup(self, item_id: str, store_id: str) -> Observation | None:
         """DG item ids ARE UPCs (11 or 12 digits)."""
