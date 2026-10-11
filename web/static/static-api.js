@@ -284,5 +284,14 @@
   // Re-read the data on a timer so an open tab sees new pennies, and notify.
   setInterval(() => { if (!document.hidden) ensure(true).then(notifyNew).catch(() => {}); }, REFRESH_MS);
   window.pennyStatic = { api, prefs, setPrefs, ensure, notifyNew, meta: () => data?.meta,
-    topics: () => myStores().map((s) => ({ store: s, topic: `${data.meta.ntfy.prefix}-${s.retailer}-${s.store_id}` })) };
+    // One topic per shelf store; Dollar General pennies are chain-wide, so DG has one topic.
+    topics: () => {
+      const mine = myStores();
+      const out = mine.filter((s) => s.retailer !== "dollargeneral")
+        .map((s) => ({ label: s.name, retailer: s.retailer, topic: `${data.meta.ntfy.prefix}-${s.retailer}-${s.store_id}` }));
+      if (mine.some((s) => s.retailer === "dollargeneral")) {
+        out.push({ label: "All stores (pennies are chain-wide)", retailer: "dollargeneral", topic: `${data.meta.ntfy.prefix}-dollargeneral` });
+      }
+      return out;
+    } };
 })();

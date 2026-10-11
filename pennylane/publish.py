@@ -16,9 +16,10 @@ Privacy rule: the site must not show which stores Alex watches.
     register price comes from his stores but is published per item, with
     no store named.
 
-Phone alerts: a new penny on a published shelf posts to the ntfy topic for
-that store (`<prefix>-<retailer>-<store>`). The first run only records
-what is already pennied, so subscribers are not flooded.
+Phone alerts: new pennies post to ntfy, one message per topic per run. Shelf
+stores have a topic each (`<prefix>-<retailer>-<store>`); Dollar General
+pennies are chain-wide, so DG has one (`<prefix>-dollargeneral`). The first
+run only records what is already pennied, so subscribers are not flooded.
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ ROOT = config.ROOT
 SITE = config.DATA_DIR / "site"
 DISCOVER_EVERY_S = 7 * 86400
 DG_STOCK_EVERY_S = 6 * 3600
-NTFY_DEDUPE_S = 3 * 86400
+# Topic layout changed 2026-10-11 (per-run digests, one DG topic): seed again silently.
+NTFY_SEED = "ntfy_seeded_v2"
 RECENT_S = 21 * 86400
 
 
@@ -131,6 +133,10 @@ def export(cfg: dict) -> dict:
     for key in ("homedepot", "lowes"):
         _export_shelf_lane(cfg, key, by_lane.get(key) or [], items, int(p.get("history_per_store", 12)))
     _export_dg(by_lane.get("dollargeneral") or [], items)
+    # A lane with nothing to show (Lowe's: no community list covers it) stays off
+    # the site, so a visitor's store picker does not fill with empty shelves.
+    live = {it["retailer"] for it in items.values()}
+    stores = [s for s in stores if s["retailer"] in live]
     from .server import _merge_reports, _report_ctype
     reports = []
     for r in _merge_reports(db.report_items(None, since_days=45)):
@@ -196,7 +202,8 @@ def _export_shelf_lane(cfg: dict, key: str, stores: list[dict], items: dict, his
 
 def _export_dg(stores: list[dict], items: dict) -> None:
     """Dollar General: the register price is the chain's (from the stores we
-    check, unnamed); stock per published store from the locator."""
+    check, unnamed). Stock per published store comes from the locator, except
+    for pennies, where the locator answers a placeholder."""
     if not stores:
         return
     pub = {s["store_id"] for s in stores}
@@ -215,24 +222,27 @@ def _export_dg(stores: list[dict], items: dict) -> None:
         penny = any(o["price"] is not None and o["price"] <= 0.01 for o in lat_obs)
         scores = [sc for sc in (detect.score_item("dollargeneral", upc_id, sid) for sid in checked) if sc]
         best = max(scores, key=lambda sc: sc["score"]) if scores else {}
-        stock = _dg_stock(lane, upc_id, center)
         since_penny = min((db.penny_window("dollargeneral", upc_id, sid)["since"] or 9e12) for sid in checked)
+        penny_since = {"since": since_penny if since_penny < 9e12 else None, "after": None}
         per = {}
-        for sid, (qty, status) in stock.items():
-            if sid not in pub:
-                continue
-            on = (qty or 0) > 0 or status == 3
-            if not on:
-                continue  # not on this shelf
-            stage = ("penny" if on else "gone") if penny else (best.get("stage") if on else "gone")
-            score = (100 if on else 20) if penny else (best.get("score") or 0 if on else 10)
-            reasons = (["register price is $0.01 at the stores we check"] if penny else
-                       [r for r in best.get("reasons", []) if "register price" not in r])
-            reasons.append(f"locator stock {qty}" if qty is not None else "locator stock unknown")
-            per[sid] = {"price": newest["price"], "original": newest["original"], "clearance_price": None,
-                        "qty": qty, "store_status": None, "ts": newest["ts"], "score": score, "stage": stage,
-                        "reasons": reasons, "penny": {"since": since_penny if since_penny < 9e12 else None, "after": None},
-                        "changed_at": None, "chain_price": True}
+        if penny:
+            # A DG penny is chain-wide, and the locator's stock for it is a placeholder
+            # (5 at every store), so every published store gets the penny, stock unknown.
+            for sid in pub:
+                per[sid] = {"price": 0.01, "original": newest["original"], "clearance_price": None, "qty": None,
+                            "store_status": None, "ts": newest["ts"], "score": 90, "stage": "penny",
+                            "reasons": ["register price is $0.01 at the stores we check",
+                                        "stock unknown: Dollar General hides counts on penny items"],
+                            "penny": penny_since, "changed_at": None, "chain_price": True}
+        else:
+            for sid, (qty, _status) in _dg_stock(lane, upc_id, center).items():
+                if sid not in pub or not (qty or 0) > 0:
+                    continue  # not on this shelf
+                per[sid] = {"price": newest["price"], "original": newest["original"], "clearance_price": None,
+                            "qty": qty, "store_status": None, "ts": newest["ts"], "score": best.get("score") or 0,
+                            "stage": best.get("stage"), "reasons": [r for r in best.get("reasons", [])
+                                                                     if "register price" not in r] + [f"locator stock {qty}"],
+                            "penny": penny_since, "changed_at": None, "chain_price": True}
         if per:
             items[f"dollargeneral/{upc_id}"] = _item_head("dollargeneral", upc_id, it, newest) | {"stores": per, "history": []}
 
@@ -272,32 +282,47 @@ def _changed_at(key: str, iid: str, sid: str, price) -> float | None:
 # ---- phone alerts ------------------------------------------------------------------
 
 def ntfy(cfg: dict, data: dict) -> dict:
+    """One message per topic per run, never one per item. A shelf store has
+    its own topic; Dollar General pennies are chain-wide, so DG has one topic.
+    A (topic, item) alerts once per penny run: the key holds the run's start,
+    so the same penny never repeats and a re-penny after a price rise does."""
     n = cfg["publish"]["ntfy"]
-    seeded = bool(db.kv_get("ntfy_seeded"))
+    seeded = bool(db.kv_get(NTFY_SEED))
     names = {(s["retailer"], s["store_id"]): s["name"] for s in data["stores"]}
-    sent = seeded_n = 0
-    now = time.time()
+    fresh: dict[str, dict] = {}  # topic -> {"title": str, "items": [item]}
+    seeded_n = 0
     for it in data["items"].values():
-        for sid, st in it["stores"].items():
-            if st["stage"] != "penny":
+        pennied = {sid: st for sid, st in it["stores"].items() if st["stage"] == "penny"}
+        if not pennied:
+            continue
+        if it["retailer"] == "dollargeneral":
+            targets = [(f"{n['prefix']}-dollargeneral", "Dollar General", next(iter(pennied.values())))]
+        else:
+            targets = [(f"{n['prefix']}-{it['retailer']}-{sid}", names.get((it["retailer"], sid), sid), st)
+                       for sid, st in pennied.items()]
+        for topic, where, st in targets:
+            k = f"ntfy:{topic}:{it['item_id']}"
+            run_start = str(round((st.get("penny") or {}).get("since") or 0))
+            if db.kv_get(k) == run_start:
                 continue
-            k = f"ntfy:{it['retailer']}:{sid}:{it['item_id']}"
-            if now - float(db.kv_get(k) or 0) < NTFY_DEDUPE_S:
-                continue
-            db.kv_set(k, now)
+            db.kv_set(k, run_start)
             if not seeded:
                 seeded_n += 1
                 continue
-            topic = f"{n['prefix']}-{it['retailer']}-{sid}"
-            store = names.get((it["retailer"], sid), sid)
-            msg = (f"{it['name']} rings up $0.01 at {store}."
-                   + (f" MSRP ${it['msrp']:,.2f}." if it.get("msrp") else "")
-                   + (f" SKU {it['sku']}." if it.get("sku") else "") + (f" UPC {it['upc']}." if it.get("upc") else ""))
-            if _ntfy_post(n["server"], topic, "Penny on the shelf", msg, _site_url(cfg, it)):
-                sent += 1
+            fresh.setdefault(topic, {"where": where, "items": []})["items"].append(it)
     if not seeded:
-        db.kv_set("ntfy_seeded", now)
-    return {"sent": sent, "seeded": seeded_n}
+        db.kv_set(NTFY_SEED, time.time())
+    sent = 0
+    for topic, f in fresh.items():
+        its = sorted(f["items"], key=lambda x: -(x.get("msrp") or 0))
+        lines = [f"{x['name']}" + (f" (MSRP ${x['msrp']:,.2f})" if x.get("msrp") else "")
+                 + (f" SKU {x['sku']}" if x.get("sku") else f" UPC {x['upc']}" if x.get("upc") else "") for x in its[:10]]
+        if len(its) > 10:
+            lines.append(f"and {len(its) - 10} more")
+        title = f"{len(its)} new penn{'y' if len(its) == 1 else 'ies'} at {f['where']}"
+        if _ntfy_post(n["server"], topic, title, "\n".join(lines), _site_url(cfg, its[0] if len(its) == 1 else None)):
+            sent += 1
+    return {"messages": sent, "items": sum(len(f["items"]) for f in fresh.values()), "seeded": seeded_n}
 
 
 def _ntfy_post(server: str, topic: str, title: str, msg: str, click: str) -> bool:

@@ -436,7 +436,7 @@
       <h3>Phone alerts</h3>
       <div class="panel">
         <p class="lede" style="font-size:13px;margin:10px 0">Get a push the moment a penny is on one of your shelves, with no account. Install the free <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a> app, then subscribe to your stores:</p>
-        ${topics.map((t) => `<div class="row-line"><span class="grow">${esc(SHORT[t.store.retailer] || t.store.retailer)} ${esc(storeName(t.store.retailer, t.store.name))}</span>
+        ${topics.map((t) => `<div class="row-line"><span class="grow">${esc(SHORT[t.retailer] || t.retailer)} ${esc(storeName(t.retailer, t.label))}</span>
           <a class="sub" href="${esc(server)}/${esc(t.topic)}" target="_blank" rel="noopener">${esc(t.topic)}</a></div>`).join("") || '<div class="row-line muted">Pick stores above first.</div>'}
       </div>
       <h3>About this copy</h3>

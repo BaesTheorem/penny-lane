@@ -47,6 +47,12 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
     # ---- confirmed penny ----
     if price is not None and price <= 0.01:
         reasons.append(f"register price is ${price:.2f}")
+        if qty is None and latest.get("in_stock") is None:
+            # Dollar General reports a placeholder stock (5, status 3) for every penny
+            # item at every store, so the lane records "unknown". Still a penny: rank it
+            # just under a confirmed one.
+            reasons.append("stock unknown: Dollar General hides counts on penny items")
+            return _result(90, "penny", None, reasons, latest)
         return _result(100 if on_shelf else 20, "penny" if on_shelf else "gone", None, reasons, latest)
 
     # ---- clearance state ----

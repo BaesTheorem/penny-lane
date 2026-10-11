@@ -82,7 +82,8 @@ class DollarGeneral(Retailer):
 
     def stock_near(self, upc: str, lat: float, lon: float, radius: float = 25) -> list[dict]:
         """Per-store stock rows for one UPC around a point: storeNumber,
-        productQTY, inventoryStatus. No price."""
+        productQTY, inventoryStatus. No price. For a penny item every row says
+        5 / 3 (a placeholder), so callers skip this for pennies."""
         d = self._post("/store/search/inventory", {"latitude": lat, "longitude": lon, "radius": round(radius),
                                                    "upc": upc.zfill(12)})
         return (d.get("stores") or []) if isinstance(d, dict) else []
@@ -104,7 +105,10 @@ class DollarGeneral(Retailer):
         final = p.get("finalPrice")
         orig = p.get("originalPrice")
         penny = bool(p.get("pennyOrZeroPriceItem"))
-        qty = p.get("availableStockStore")
+        # For a penny item the API answers availableStockStore 5 / stockStatus 3 at every
+        # store in the country (KC, Nashville, El Paso, 2026-10-11): a placeholder, not a
+        # count. Record unknown. Normal items carry real counts.
+        qty = None if penny else p.get("availableStockStore")
         offers = "; ".join(f"{o.get('method', '')} {o.get('savings', '')}".strip() for o in p.get("offers") or [])
         upc = str(p.get("salsifyUpc") or p.get("Upc") or "")
         hier = p.get("categoryHierarchies") or []
@@ -115,7 +119,7 @@ class DollarGeneral(Retailer):
             price=0.01 if penny else final, original=orig if orig not in (None, final) else None,
             clearance_price=final if (orig and final and final < orig) else None,
             promo=(offers + (f"; {p['nearByStoresAvailabilityCount']} nearby stores have it" if p.get("nearByStoresAvailabilityCount") else "")).strip("; ") or None, qty=int(qty) if qty is not None else None,
-            in_stock=(p.get("stockStatus") in (2, 3)) if p.get("stockStatus") is not None else None,
+            in_stock=(p.get("stockStatus") in (2, 3)) if p.get("stockStatus") is not None and not penny else None,
             discontinued=None, store_status="PENNY" if penny else None,
             online_status=str(p.get("isSellable")) if p.get("isSellable") is not None else None,
             name=p.get("description") or p.get("productName") or "",
