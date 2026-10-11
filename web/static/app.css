@@ -66,12 +66,12 @@ h3 { margin: 22px 0 8px; font-family: var(--mono); font-size: 12px; font-weight:
 .muted { color: var(--ink-3); }
 
 /* ---- filters: inline label + select, like a form on a tag ---- */
-.filters { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
-.filters::-webkit-scrollbar { display: none; }
-.pick { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--ink); background: var(--card); padding: 0 0 0 10px; height: 34px; }
-.pick span { font-family: var(--mono); font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-3); }
+/* Stacked in a grid, two across on a phone, so every control shows without a sideways scroll. */
+.filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 2px 0 12px; }
+.pick { min-width: 0; display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink); background: var(--card); padding: 0 0 0 10px; height: 34px; }
+.pick span { flex: none; font-family: var(--mono); font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-3); }
 .pick select { appearance: none; -webkit-appearance: none; border: 0; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%230d1b33'/%3E%3C/svg%3E") no-repeat right 10px center;
-  padding: 0 28px 0 0; height: 100%; font-weight: 700; font-size: 13px; cursor: pointer; max-width: 210px; text-overflow: ellipsis; }
+  padding: 0 28px 0 0; height: 100%; font-weight: 700; font-size: 13px; cursor: pointer; flex: 1; min-width: 0; text-overflow: ellipsis; }
 .pick select:focus { outline: none; }
 .pick:focus-within { outline: 2px solid var(--blue); outline-offset: -1px; }
 
