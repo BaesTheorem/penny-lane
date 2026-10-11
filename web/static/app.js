@@ -25,6 +25,14 @@
     return `${Math.round(d / 1440)}d ago`;
   };
   const day = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+  // Whole calendar days between a timestamp and today: "today", "1 day", "9 days".
+  const daysOld = (ts) => {
+    if (!ts) return "";
+    const start = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const n = Math.round((start(new Date()) - start(new Date(ts * 1000))) / 86400000);
+    return n <= 0 ? "today" : `${n} day${n === 1 ? "" : "s"}`;
+  };
+  const dayAge = (ts) => { const a = daysOld(ts); return a === "today" ? `${day(ts)} (today)` : `${day(ts)} (${a} ago)`; };
   const snack = (msg) => { const s = $("#snack"); s.textContent = msg; s.classList.add("show"); setTimeout(() => s.classList.remove("show"), 2500); };
   const isPenny = (p) => p != null && p <= 0.01;
   // Store names from DG already start with "DG"; do not print the retailer twice.
@@ -32,6 +40,17 @@
 
   // A price set like a shelf tag: superscript dollar sign, condensed numerals.
   const bigPrice = (v) => (v == null ? `<div class="now">&mdash;</div>` : `<div class="now"><sup>$</sup>${Number(v).toFixed(2)}</div>`);
+  // Left column of every tag: the register price, the MSRP, and the dollars saved.
+  const priceBlock = (eff, msrp) => {
+    const pen = isPenny(eff);
+    const save = msrp && eff != null && msrp - eff >= 0.01 ? msrp - eff : null;
+    return `<div class="price-block">
+      ${pen ? `<div class="stamp">Rings up</div>` : ""}
+      ${bigPrice(eff)}
+      ${msrp ? `<div class="msrp"><span>MSRP</span>${money(msrp)}</div>` : ""}
+      ${save ? `<div class="save"><span>Save</span>${money(save)}<small>${Math.round((save / msrp) * 100)}% off</small></div>` : ""}
+    </div>`;
+  };
   const meter = (score) => {
     const on = Math.round((Math.max(0, Math.min(100, score || 0)) / 100) * 5);
     return `<div class="bars">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < on ? "on" : ""}"></span>`).join("")}</div>`;
@@ -41,8 +60,8 @@
   const pennyWhen = (r) => {
     const parts = [];
     const p = r.penny || {};
-    if (p.since) parts.push(p.after ? `Pennied here between ${day(p.after)} and ${day(p.since)}` : `$0.01 here since at least ${day(p.since)}`);
-    if (r.first_reported) parts.push(`first reported ${day(r.first_reported)}`);
+    if (p.since) parts.push(p.after ? `Pennied here between ${day(p.after)} and ${dayAge(p.since)}` : `$0.01 here since at least ${dayAge(p.since)}`);
+    if (r.first_reported) parts.push(`first reported ${dayAge(r.first_reported)}`);
     return parts.length ? `<div class="when"><i>event</i><span>${esc(parts.join(" · "))}</span></div>` : "";
   };
   const codes = (r) => {
@@ -135,11 +154,7 @@
     const reasons = (() => { try { return JSON.parse(r.reasons || "[]"); } catch { return []; } })();
     const why = pen ? reasons.filter((x) => !/register price/.test(x)) : reasons;
     return `<article class="tag ${pen ? "penny" : ""} ${esc(r.stage)}" data-item="${esc(r.retailer)}/${esc(r.item_id)}">
-      <div class="price-block">
-        ${pen ? `<div class="stamp">Rings up</div>` : ""}
-        ${bigPrice(eff)}
-        ${r.msrp && r.msrp !== eff ? `<div class="was-label">Was</div><div class="was">${money(r.msrp)}</div>` : ""}
-      </div>
+      ${priceBlock(eff, r.msrp)}
       <div class="body">
         <div class="score"><b>${r.score}</b>${meter(r.score)}<div class="stage-label">${esc(STAGE[r.stage] || r.stage)}</div></div>
         <div class="name">${esc(r.name || r.item_id)}</div>
@@ -164,7 +179,7 @@
       const eff = o.clearance_price ?? o.price;
       const pen = isPenny(eff);
       return `<article class="tag ${pen ? "penny" : ""}" style="cursor:default">
-        <div class="price-block">${pen ? `<div class="stamp">Rings up</div>` : ""}${bigPrice(eff)}${o.original ? `<div class="was-label">Was</div><div class="was">${money(o.original)}</div>` : ""}</div>
+        ${priceBlock(eff, o.msrp ?? o.original)}
         <div class="body">
           <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
           <div class="name">${esc(o.store_name || o.store_id)}</div>
@@ -221,11 +236,12 @@
       const eff = o.clearance_price ?? o.price;
       const pen = isPenny(eff);
       return `<article class="tag ${pen ? "penny" : ""}" data-item="${esc(o.retailer)}/${esc(o.item_id)}">
-        <div class="price-block">${pen ? `<div class="stamp">Rings up</div>` : ""}${bigPrice(eff)}${o.original ? `<div class="was-label">Was</div><div class="was">${money(o.original)}</div>` : ""}</div>
+        ${priceBlock(eff, o.msrp ?? o.original)}
         <div class="body">
           <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
           <div class="name">${esc(o.name || o.item_id)}</div>
           <div class="where"><b>${esc(SHORT[o.retailer] || o.retailer)}</b> ${esc(storeName(o.retailer, o.store_name) || o.store_id)} · qty ${o.qty ?? "?"}</div>
+          ${pennyWhen(o)}
           ${(o.reasons || []).length ? `<div class="why">${esc(o.reasons.slice(0, 3).join(" · "))}</div>` : ""}
         </div></article>`;
     }).join("");
@@ -253,7 +269,8 @@
         <div class="price-block">
           <div class="stamp" style="font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:2px">Pennied</div>
           <div class="now" style="font-size:24px">${esc(day(r.first_reported_at || r.reported_at) || "&mdash;")}</div>
-          ${r.retail ? `<div class="was-label">Was</div><div class="was">${money(r.retail)}</div>` : ""}
+          ${(r.first_reported_at || r.reported_at) ? `<div class="age">${esc(daysOld(r.first_reported_at || r.reported_at) === "today" ? "today" : `${daysOld(r.first_reported_at || r.reported_at)} ago`)}</div>` : ""}
+          ${r.retail ? `<div class="msrp"><span>MSRP</span>${money(r.retail)}</div><div class="save"><span>Save</span>${money(r.retail - 0.01)}</div>` : ""}
         </div>
         <div class="body">
           <div class="name" style="margin-right:0">${esc(r.name || r.sku || r.upc)}</div>
@@ -293,7 +310,19 @@
       <div class="panel">${runs || '<div class="row-line muted">No runs yet.</div>'}</div>
       <h3>Sources</h3>
       <div class="panel">${Object.entries(src).map(([k, v]) => `<div class="row-line"><span class="grow">${esc(k)}</span><span class="sub">${v.seen} seen · ${v.new} new · ${esc(ago(v.at))}</span></div>`).join("") || '<div class="row-line muted">Not pulled yet.</div>'}</div>
-      <h3>Stores · zip ${esc(cfg.zip)} · ${esc(cfg.radius_miles)} mi</h3>
+      <h3>Location</h3>
+      <div class="panel loc">
+        <div class="row-line"><i>location_on</i><span class="grow"><b>${esc(cfg.location?.label || "Zip " + cfg.zip)}</b></span>
+          <span class="sub">zip ${esc(cfg.zip)} · ${esc(cfg.radius_miles)} mi</span></div>
+        <div class="loc-form">
+          <button class="btn solid" id="locDetect"><i>my_location</i> Detect location</button>
+          <input id="locZip" inputmode="numeric" maxlength="5" placeholder="Zip code" value="">
+          <select id="locRadius">${[5, 10, 15, 25, 50].map((m) => `<option value="${m}" ${Number(cfg.radius_miles) === m ? "selected" : ""}>${m} mi</option>`).join("")}</select>
+          <button class="btn" id="locSet">Use zip</button>
+        </div>
+        <p class="lede loc-note">A move watches the nearest stores per retailer, as many as you watch now (at least 3). Walmart stores stay as you set them.</p>
+      </div>
+      <h3>Stores</h3>
       ${Object.entries(byR).map(([r, list]) => `<div class="panel"><div class="lane-name">${esc(LABELS[r] || r)}${lanes[r]?.can_sweep ? "<small>SWEEPABLE</small>" : ""}</div>
         ${list.map((s) => `<label class="row-line"><input class="check" type="checkbox" data-store="${esc(r)}/${esc(s.store_id)}" ${s.watched ? "checked" : ""}>
           <span class="grow">${esc(s.name)}</span><span class="sub">#${esc(s.store_id)}${s.distance != null ? ` · ${Number(s.distance).toFixed(1)} mi` : ""}${sw[`${r}:${s.store_id}`] ? ` · swept ${esc(ago(sw[`${r}:${s.store_id}`].at))}` : ""}</span></label>`).join("")}</div>`).join("")}
@@ -315,10 +344,40 @@
       await api("/api/stores/add", { retailer: $("#addRetailer").value, store_id: $("#addStoreId").value.trim(), name: $("#addStoreName").value.trim() });
       await loadStatus(); loadSettings();
     });
+    $("#locSet").addEventListener("click", () => {
+      const zip = $("#locZip").value.replace(/\D/g, "");
+      if (zip.length !== 5) { snack("Enter a 5-digit zip"); return; }
+      relocate({ zip });
+    });
+    $("#locZip").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#locSet").click(); });
+    $("#locDetect").addEventListener("click", () => {
+      snack("Finding you…");
+      // The device position first; if the browser has none or says no, the Mac's network location.
+      const fallback = () => relocate({ network: true });
+      if (!navigator.geolocation) { fallback(); return; }
+      navigator.geolocation.getCurrentPosition(
+        (p) => relocate({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        fallback, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+    });
     if (remote) {
       const payload = btoa(JSON.stringify({ v: 1, token: remote.pairing?.token, discovery: remote.pairing?.discovery, url: remote.pairing?.url }));
       $("#pairQr").src = `/api/qr?d=${encodeURIComponent(payload)}&light=1`;
     }
+  }
+
+  async function relocate(where) {
+    snack("Finding stores near you…");
+    $$(".loc-form button").forEach((b) => (b.disabled = true));
+    let d;
+    try { d = await api("/api/location", { ...where, radius_miles: Number($("#locRadius")?.value) || undefined }); }
+    catch (e) { snack(e.message); return loadSettings(); }
+    if (!d.ok) { snack(d.why); return loadSettings(); }
+    const n = Object.values(d.lanes).reduce((a, l) => a + (l.watched?.length || 0), 0);
+    const failed = Object.entries(d.lanes).filter(([, l]) => l.error).map(([k]) => LABELS[k] || k);
+    snack(`${d.place.label || d.place.zip}${d.place.source === "network" ? " (from the Mac's network)" : ""} · watching ${n} stores`
+      + (failed.length ? ` · ${failed.join(", ")} locator failed, stores kept` : ""));
+    await loadStatus();
+    loadSettings();
   }
 
   loadStatus().then(() => showTab("home")).catch((e) => { $("#ticker").textContent = e.message; });

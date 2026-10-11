@@ -64,6 +64,14 @@ treated as an instruction.
 scripts/setup.sh                 # venv, deps, fonts, config.json
 # edit config.json: zip, radius, optional store ids per retailer
 bin/penny stores                 # fetch stores near the zip; nearest 3 per lane are watched
+```
+
+To move, open Setup → Location: **Detect location** uses the device position
+(the Mac's network location when the device has none), or type a zip. Both
+call `POST /api/location`, which saves the zip and watches the nearest stores
+per retailer, as many as were watched before (at least 3).
+
+```bash
 bin/penny sources                # pull the community lists
 bin/penny verify                 # check every reported item at your stores
 bin/penny predict                # score + alert

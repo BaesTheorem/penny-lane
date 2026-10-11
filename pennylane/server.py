@@ -13,7 +13,7 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-from . import classify, config, db, detect, scan
+from . import classify, config, db, detect, location, scan
 from .retailers import registry
 from .retailers.base import LaneBlocked, LaneRetry
 
@@ -51,7 +51,7 @@ def status():
     sweeps = {k[len("sweep_last:"):]: v for k, v in
               ((r["k"], db.kv_get(r["k"])) for r in db.rows("SELECT k FROM kv WHERE k LIKE 'sweep_last:%'"))}
     lanes = {k: {"label": v.label, "can_sweep": v.can_sweep} for k, v in registry().items()}
-    return jsonify(zip=cfg["zip"], stores=stores, counts=counts, runs=runs, sources=sources, sweeps=sweeps,
+    return jsonify(zip=cfg["zip"], location=cfg.get("location") or {}, stores=stores, counts=counts, runs=runs, sources=sources, sweeps=sweeps,
                    jobs=_jobs, lanes=lanes, min_score=cfg["notify"]["min_score"])
 
 
@@ -238,6 +238,7 @@ def item(retailer, item_id):
             o["stage"] = sc["stage"] if sc else None
             o["reasons"] = sc["reasons"] if sc else []
             o["penny"] = db.penny_window(retailer, item_id, st["store_id"])
+            o["msrp"] = db.msrp(retailer, item_id, o)
             latest.append(o)
     reports = db.rows("SELECT * FROM reports WHERE retailer=? AND (item_id=? OR sku=? OR upc=?) ORDER BY reported_at DESC",
                       (retailer, item_id, it.get("sku") or "-", it.get("upc") or "-"))
@@ -299,7 +300,9 @@ def lookup():
             if sc:
                 db.put_prediction(r_key, o.item_id, st["store_id"], sc["score"], sc["stage"], sc["next_step_at"], sc["reasons"])
             d = o.as_dict()
-            d.update(store_name=st.get("name"), score=sc.get("score"), stage=sc.get("stage"), reasons=sc.get("reasons", []))
+            d.update(store_name=st.get("name"), score=sc.get("score"), stage=sc.get("stage"), reasons=sc.get("reasons", []),
+                     msrp=db.msrp(r_key, o.item_id, d), penny=db.penny_window(r_key, o.item_id, st["store_id"]),
+                     first_reported=db.first_reported(r_key, o.item_id))
             results.append(d)
             time.sleep(min(lane.gap, 1.0))
     return jsonify(ok=True, results=results)
@@ -396,6 +399,28 @@ def set_config():
     config.merge(cfg, request.get_json(force=True) or {})
     config.save(cfg)
     return jsonify(cfg)
+
+
+@app.post("/api/location")
+def set_location():
+    """Body: {zip} | {lat, lon} | {network: true}, plus radius_miles?. Saves the
+    zip and re-picks the nearest stores per retailer (a handful of locator
+    requests, so it answers inline)."""
+    b = request.get_json(force=True) or {}
+    try:
+        if b.get("zip"):
+            place = location.place_for_zip(str(b["zip"]).strip())
+        elif b.get("lat") is not None and b.get("lon") is not None:
+            place = location.place_for_point(float(b["lat"]), float(b["lon"]))
+        elif b.get("network"):
+            place = location.place_for_network()
+            place["source"] = "network"
+        else:
+            return jsonify(ok=False, why="send a zip, a position, or network:true"), 400
+    except location.LocationError as e:
+        return jsonify(ok=False, why=str(e))
+    radius = float(b["radius_miles"]) if b.get("radius_miles") else None
+    return jsonify(ok=True, **location.relocate(place, radius))
 
 
 @app.post("/api/run/<job>")

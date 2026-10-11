@@ -96,6 +96,13 @@ h3 { margin: 22px 0 8px; font-family: var(--mono); font-size: 12px; font-weight:
 .tag .now sup { font-size: 16px; vertical-align: top; position: relative; top: 3px; margin-right: 1px; }
 .tag .was { font-family: var(--mono); font-size: 11px; margin-top: 4px; color: var(--red); text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .tag .was-label { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-3); margin-top: 6px; }
+.tag .msrp { margin-top: 8px; font-weight: 800; font-stretch: 75%; font-size: 17px; line-height: 1; }
+.tag .msrp span, .tag .save span { display: block; font-family: var(--mono); font-weight: 500; font-stretch: 100%; font-size: 9px; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
+.tag .save { margin-top: 6px; padding: 4px 6px 5px; background: var(--green); color: #fff; font-weight: 900; font-stretch: 70%; font-size: 17px; line-height: 1; }
+.tag .save span { color: rgba(255, 255, 255, .8); }
+.tag .save small { display: block; font-family: var(--mono); font-weight: 500; font-stretch: 100%; font-size: 10px; margin-top: 2px; }
+.tag .age { font-family: var(--mono); font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--blue-ink); margin-top: 3px; }
 .tag.penny .price-block { background: var(--yellow); border-right-color: rgba(13, 27, 51, .35); }
 .tag.penny .price-block .stamp { font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 2px; }
 .tag.gone { opacity: .62; }
@@ -181,6 +188,14 @@ table.hist tr.pen td { background: var(--yellow); font-weight: 700; }
 .check:checked::after { content: ""; width: 10px; height: 5px; border-left: 2px solid var(--yellow); border-bottom: 2px solid var(--yellow); transform: rotate(-45deg) translate(1px, -1px); }
 .lane-name { font-weight: 800; font-stretch: 80%; text-transform: uppercase; letter-spacing: .3px; padding: 10px 0 4px; display: flex; gap: 8px; align-items: baseline; }
 .lane-name small { font-family: var(--mono); font-weight: 400; font-size: 10px; color: var(--blue-ink); letter-spacing: .6px; }
+.loc .row-line i { color: var(--blue-ink); }
+.loc-form { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 0 4px; }
+.loc-form .btn { display: inline-flex; align-items: center; gap: 6px; }
+.loc-form .btn i { font-size: 18px; }
+.loc-form .btn:disabled { opacity: .5; cursor: progress; }
+.loc-form input, .loc-form select { border: 1px solid var(--ink); background: var(--card); padding: 7px 9px; font-size: 13px; }
+.loc-form input { width: 110px; font-family: var(--mono); letter-spacing: 1px; }
+.loc-note { font-size: 12.5px; margin: 6px 0 10px; }
 .add-store { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 12px; }
 .add-store select, .add-store input { border: 1px solid var(--ink); background: var(--card); padding: 7px 9px; font-size: 13px; }
 .add-store input { width: 120px; }

@@ -44,6 +44,7 @@ targets:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Penny Lane talks to the server on your Mac over the local network.
+        NSLocationWhenInUseUsageDescription: Penny Lane uses your location once, when you tap Detect location, to find the stores near you.
         NSCameraUsageDescription: The camera scans product barcodes on the shelf and the pairing QR code from the Mac.
         CFBundleURLTypes:
           - CFBundleURLName: com.alexhedtke.pennylane
