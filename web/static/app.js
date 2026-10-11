@@ -87,7 +87,12 @@
     if (name === "scan") setTimeout(() => $("#scanInput").focus(), 50);
   }
   $$("[data-tab]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); showTab(a.dataset.tab); }));
-  $("#scanBtn").addEventListener("click", () => (window.webkit?.messageHandlers?.scan ? window.webkit.messageHandlers.scan.postMessage("open") : showTab("scan")));
+  // The iPhone app scans natively; a browser opens the Scan tab and its camera.
+  $("#scanBtn").addEventListener("click", () => {
+    if (window.webkit?.messageHandlers?.scan) { window.webkit.messageHandlers.scan.postMessage("open"); return; }
+    showTab("scan");
+    if (camOK()) openCamera();
+  });
   $("#refreshBtn").addEventListener("click", () => { loadStatus().then(() => showTab(state.tab)); });
 
   // ---- status / stores / ticker ----
@@ -257,6 +262,8 @@
   // ---- scan ----
   async function doLookup(code) {
     code = (code || $("#scanInput").value).replace(/\D/g, "");
+    // A camera reads a UPC-A as EAN-13 with a leading 0; the tag and the indexes use the 12 digits.
+    if (code.length === 13 && code[0] === "0") code = code.slice(1);
     if (!code) return;
     $("#scanInput").value = code;
     $("#scanOut").innerHTML = `<p class="muted mono">Looking up ${esc(code)}…</p>`;
@@ -280,6 +287,75 @@
         </div></article>`;
     }).join("");
   }
+  // ---- camera scan: native BarcodeDetector where it reads retail codes (Chrome on
+  // Android), else the vendored zxing-wasm ponyfill (Safari, Firefox), loaded on first use.
+  const FORMATS = ["upc_a", "upc_e", "ean_13", "ean_8", "code_128"];
+  let detectorP = null;
+  const camOK = () => !!navigator.mediaDevices?.getUserMedia && window.isSecureContext;
+  function detector() {
+    return detectorP ||= (async () => {
+      if ("BarcodeDetector" in window) {
+        const have = await window.BarcodeDetector.getSupportedFormats().catch(() => []);
+        if (FORMATS.slice(0, 4).every((f) => have.includes(f))) return new window.BarcodeDetector({ formats: FORMATS.filter((f) => have.includes(f)) });
+      }
+      await new Promise((ok, fail) => {
+        const s = document.createElement("script");
+        s.src = new URL("vendor/barcode/barcode-detector.js", import.meta.url).href;
+        s.onload = ok; s.onerror = () => fail(new Error("could not load the barcode reader"));
+        document.head.append(s);
+      });
+      const wasm = new URL("vendor/barcode/zxing_reader.wasm", import.meta.url).href;
+      window.BarcodeDetectionAPI.setZXingModuleOverrides({ locateFile: (p, prefix) => (p.endsWith(".wasm") ? wasm : prefix + p) });
+      return new window.BarcodeDetectionAPI.BarcodeDetector({ formats: FORMATS });
+    })().catch((e) => { detectorP = null; throw e; });
+  }
+  let camStream = null;
+  let camLoop = 0;
+  function closeCamera() {
+    camLoop++;
+    camStream?.getTracks().forEach((t) => t.stop());
+    camStream = null;
+    $("#cam").classList.add("hidden");
+  }
+  async function openCamera() {
+    if (!camOK()) { snack("This browser cannot open the camera here. Type the code."); return; }
+    $("#cam").classList.remove("hidden");
+    $("#camStatus").textContent = "Starting the camera…";
+    const loop = ++camLoop;
+    let det;
+    try {
+      [det, camStream] = await Promise.all([detector(), navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })]);
+    } catch (e) {
+      closeCamera();
+      snack(e.name === "NotAllowedError" ? "Camera permission was refused." : e.message);
+      return;
+    }
+    if (loop !== camLoop) { camStream?.getTracks().forEach((t) => t.stop()); return; }
+    const v = $("#camVideo");
+    v.srcObject = camStream;
+    await v.play().catch(() => {});
+    $("#camStatus").textContent = "Point the camera at a barcode";
+    // Two matching reads in a row before a lookup: one blurry frame can misread a digit.
+    let last = "";
+    while (loop === camLoop) {
+      try {
+        const hits = v.readyState >= 2 ? await det.detect(v) : [];
+        const code = (hits.find((h) => /^\d{6,14}$/.test(h.rawValue)) || {}).rawValue;
+        if (code && code === last) {
+          navigator.vibrate?.(60);
+          closeCamera();
+          doLookup(code);
+          return;
+        }
+        last = code || "";
+      } catch { /* a frame that is not ready yet */ }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  }
+  $("#scanCam").addEventListener("click", openCamera);
+  $("#camClose").addEventListener("click", closeCamera);
+  document.addEventListener("visibilitychange", () => { if (document.hidden && camStream) closeCamera(); });
   $("#scanGo").addEventListener("click", () => doLookup());
   $("#scanInput").addEventListener("keydown", (e) => { if (e.key === "Enter") doLookup(); });
   window.pennyScan = (code) => { showTab("scan"); doLookup(code); };

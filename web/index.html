@@ -42,6 +42,7 @@
     <p class="lede">Type or scan a UPC, the SKU from a Home Depot yellow tag, or a Lowe's item number. On the phone, the camera fills this in.</p>
     <div class="scanbox">
       <input id="scanInput" inputmode="numeric" placeholder="0 00000 00000 0" autocomplete="off">
+      <button id="scanCam" class="btn" title="Scan with the camera"><i>photo_camera</i></button>
       <button id="scanGo" class="btn solid">Look up</button>
     </div>
     <div class="filters">
@@ -81,6 +82,11 @@
   <a data-tab="settings"><i>tune</i><span>Setup</span></a>
 </nav>
 <div id="snack" class="snack"></div>
+<div id="cam" class="cam hidden" role="dialog" aria-label="Barcode camera">
+  <video id="camVideo" playsinline muted></video>
+  <div class="cam-frame"></div>
+  <div class="cam-bar"><span id="camStatus">Point the camera at a barcode</span><button id="camClose" class="btn">Cancel</button></div>
+</div>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>
