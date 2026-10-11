@@ -63,6 +63,8 @@ def predictions():
     stage = request.args.get("stage")
     limit = int(request.args.get("limit") or 200)
     sort = request.args.get("sort") or "score"
+    # group=item: one row per item, its best store by the chosen sort, the other stores under `others`.
+    group = request.args.get("group") == "item"
     # NULLs sort last: an unknown price or MSRP is not a $0 one.
     order = {"score": "score DESC, msrp DESC NULLS LAST", "msrp": "msrp DESC NULLS LAST, score DESC",
              "savings": "savings DESC NULLS LAST, score DESC",
@@ -101,13 +103,34 @@ def predictions():
     if ctype:
         sql += " AND i.ctype=?"
         params.append(ctype)
-    sql += f") q ORDER BY {order} LIMIT ?"
-    params.append(limit)
-    out = db.rows(sql, params)
+    sql += f") q ORDER BY {order}"
+    if group:
+        out = _group_items(db.rows(sql, params))[:limit]
+    else:
+        out = db.rows(sql + " LIMIT ?", [*params, limit])
     for r in out:
         r["penny"] = db.penny_window(r["retailer"], r["item_id"], r["store_id"])
         r["first_reported"] = db.first_reported(r["retailer"], r["item_id"])
     return jsonify(out)
+
+
+def _group_items(rows: list[dict]) -> list[dict]:
+    """Rows arrive sorted, so an item's first row is its best store for that
+    sort. Later rows for the same item become `others` on that first row."""
+    best: dict[tuple, dict] = {}
+    for r in rows:
+        k = (r["retailer"], r["item_id"])
+        if k not in best:
+            r["others"] = []
+            best[k] = r
+            continue
+        best[k]["others"].append({f: r.get(f) for f in (
+            "store_id", "store_name", "price", "clearance_price", "qty", "score", "stage", "observed_at")})
+    out = list(best.values())
+    for r in out:
+        r["others"].sort(key=lambda o: (o["clearance_price"] if o["clearance_price"] is not None
+                                        else o["price"] if o["price"] is not None else 1e9))
+    return out
 
 
 @app.get("/api/alerts")

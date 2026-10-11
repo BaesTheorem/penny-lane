@@ -149,6 +149,7 @@
     if ($("#fType").value) q.set("ctype", $("#fType").value);
     q.set("min_score", "25");
     q.set("sort", $("#fSort").value || "score");
+    q.set("group", "item");
     const rows = await api(`/api/predictions?${q}`).finally(() => t === tickets.home && busy("#ranked", false));
     if (t !== tickets.home) return;
     $("#ranked").innerHTML = rows.length ? rows.map(card).join("")
@@ -170,7 +171,22 @@
         ${pennyWhen(r)}
         ${why.length ? `<div class="why">${esc(why.slice(0, 3).join(" · "))}</div>` : ""}
         ${codes(r)}
+        ${alsoAt(r)}
       </div></article>`;
+  }
+  // The item's other stores, cheapest first, as receipt lines under the best one.
+  const ALSO_MAX = 4;
+  function alsoAt(r) {
+    const others = r.others || [];
+    if (!others.length) return "";
+    const lines = others.slice(0, ALSO_MAX).map((o) => {
+      const eff = o.clearance_price ?? o.price;
+      const cls = isPenny(eff) ? "pen" : (o.qty > 0 ? "hit" : "");
+      return `<div class="line ${cls}"><span class="st">${esc((storeName(r.retailer, o.store_name) || o.store_id).toUpperCase())}</span><span class="fill"></span><span>${eff == null ? "NO PRICE" : money(eff)} · QTY ${o.qty ?? "?"}</span></div>`;
+    }).join("");
+    const more = others.length - ALSO_MAX;
+    return `<div class="receipt"><div class="also">Also at ${others.length} more store${others.length === 1 ? "" : "s"}</div>${lines}
+      ${more > 0 ? `<div class="line none"><span class="st">AND ${more} MORE · TAP FOR ALL</span></div>` : ""}</div>`;
   }
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-item]");
