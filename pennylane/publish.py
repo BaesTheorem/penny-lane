@@ -24,6 +24,7 @@ run only records what is already pennied, so subscribers are not flooded.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import shutil
@@ -359,15 +360,25 @@ def build(data: dict) -> Path:
         if child.name != ".git":
             shutil.rmtree(child) if child.is_dir() else child.unlink()
     shutil.copytree(web / "static", SITE / "static")
+    css = SITE / "static" / "app.css"
+    css.write_text(css.read_text().replace('url("/static/vendor/', 'url("vendor/'))
+    # Pages serves every file with max-age=600 and the names never change, so a
+    # phone kept the old CSS and JS after a publish. Each asset URL now carries a
+    # hash of its content, and the data file carries the build id: an open page
+    # that sees a new build reloads itself (static-api.js).
+    ver = {n: hashlib.sha1((SITE / "static" / n).read_bytes()).hexdigest()[:10]
+           for n in ("app.css", "app.js", "static-api.js")}
+    build_id = hashlib.sha1("".join(sorted(ver.values())).encode()).hexdigest()[:10]
     html = (web / "index.html").read_text()
     html = html.replace('"/static/', '"static/').replace(
         '<script type="module" src="static/app.js"></script>',
-        '<script>window.PENNY_STATIC = true;</script>\n<script src="static/static-api.js"></script>\n'
-        '<script type="module" src="static/app.js"></script>')
+        f'<script>window.PENNY_STATIC = true; window.PENNY_BUILD = "{build_id}";</script>\n'
+        f'<script src="static/static-api.js?v={ver["static-api.js"]}"></script>\n'
+        f'<script type="module" src="static/app.js?v={ver["app.js"]}"></script>')
+    html = html.replace('href="static/app.css"', f'href="static/app.css?v={ver["app.css"]}"')
     (SITE / "index.html").write_text(html)
-    css = SITE / "static" / "app.css"
-    css.write_text(css.read_text().replace('url("/static/vendor/', 'url("vendor/'))
     (SITE / "data").mkdir(exist_ok=True)
+    data = {**data, "meta": {**data["meta"], "build": build_id}}
     (SITE / "data" / "site.json").write_text(json.dumps(data, separators=(",", ":")))
     (SITE / ".nojekyll").write_text("")
     return SITE

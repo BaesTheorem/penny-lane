@@ -30,6 +30,12 @@
     if (!r.ok) throw new Error(`site data: ${r.status}`);
     data = await r.json();
     loadedAt = Date.now();
+    // A publish changed the page itself: reload once to pick up the new CSS and JS.
+    if (data.meta.build && window.PENNY_BUILD && data.meta.build !== window.PENNY_BUILD
+        && sessionStorage.getItem("pennylane.reloaded") !== data.meta.build) {
+      sessionStorage.setItem("pennylane.reloaded", data.meta.build);
+      location.reload();
+    }
     return data;
   }
 
