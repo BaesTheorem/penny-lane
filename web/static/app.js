@@ -123,7 +123,14 @@
   }
 
   // ---- home ----
+  // Each list load takes a ticket; an answer that arrives after a newer request is dropped,
+  // so a slow old sort cannot overwrite the one Alex just picked.
+  const tickets = {};
+  const take = (k) => (tickets[k] = (tickets[k] || 0) + 1);
+  const busy = (sel, on) => $(sel).classList.toggle("loading", on);
   async function loadHome() {
+    const t = take("home");
+    busy("#ranked", true);
     const alerts = (await api("/api/alerts?limit=40")).filter((a) => !a.seen);
     const pennies = alerts.filter((a) => a.kind === "penny_on_shelf").length;
     // Price out of the alert message ("..., clearance price $17.99; ...") for the left column.
@@ -142,7 +149,8 @@
     if ($("#fType").value) q.set("ctype", $("#fType").value);
     q.set("min_score", "25");
     q.set("sort", $("#fSort").value || "score");
-    const rows = await api(`/api/predictions?${q}`);
+    const rows = await api(`/api/predictions?${q}`).finally(() => t === tickets.home && busy("#ranked", false));
+    if (t !== tickets.home) return;
     $("#ranked").innerHTML = rows.length ? rows.map(card).join("")
       : `<div class="empty"><i>sell</i>Nothing near a penny matches these filters.<br>Run <b>Verify</b> or a <b>Sweep</b> from Setup to look again.</div>`;
   }
@@ -252,11 +260,14 @@
 
   // ---- lists: report cards with a receipt of local stock ----
   async function loadLists() {
+    const t = take("lists");
+    busy("#lists", true);
     const q = new URLSearchParams();
     if ($("#lRetailer").value) q.set("retailer", $("#lRetailer").value);
     if ($("#lType").value) q.set("ctype", $("#lType").value);
     q.set("sort", $("#lSort").value || "recent");
-    const rows = await api(`/api/reports?${q}`);
+    const rows = await api(`/api/reports?${q}`).finally(() => t === tickets.lists && busy("#lists", false));
+    if (t !== tickets.lists) return;
     $("#lists").innerHTML = rows.slice(0, 400).map((r) => {
       const carried = (r.local || []).filter((o) => o.price != null);
       const notCarried = (r.local || []).length - carried.length;

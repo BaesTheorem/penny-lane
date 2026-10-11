@@ -63,18 +63,25 @@ def predictions():
     stage = request.args.get("stage")
     limit = int(request.args.get("limit") or 200)
     sort = request.args.get("sort") or "score"
-    order = {"score": "p.score DESC, msrp DESC", "msrp": "msrp DESC, p.score DESC",
-             "savings": "(COALESCE(msrp,0) - COALESCE(o.clearance_price, o.price, 0)) DESC, p.score DESC",
-             "recent": "o.ts DESC"}.get(sort, "p.score DESC")
+    # NULLs sort last: an unknown price or MSRP is not a $0 one.
+    order = {"score": "score DESC, msrp DESC NULLS LAST", "msrp": "msrp DESC NULLS LAST, score DESC",
+             "savings": "savings DESC NULLS LAST, score DESC",
+             "recent": "changed_at DESC NULLS LAST, score DESC"}.get(sort, "score DESC")
     ctype = request.args.get("ctype")
-    sql = """SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
+    sql = """SELECT q.*, ROUND(q.msrp - COALESCE(q.clearance_price, q.price), 2) AS savings FROM (
+             SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
                     o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
                     COALESCE(o.original,
                              (SELECT MAX(x.original) FROM observations x
                                 WHERE x.retailer=p.retailer AND x.item_id=p.item_id),
                              (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
                                 AND (r.item_id=p.item_id OR (i.sku<>'' AND r.sku=i.sku) OR (i.upc<>'' AND r.upc=i.upc))),
-                             CASE WHEN o.price > 0.01 AND o.clearance_price IS NULL THEN o.price END) AS msrp
+                             CASE WHEN o.price > 0.01 AND o.clearance_price IS NULL THEN o.price END) AS msrp,
+                    -- When this store's current price started: the first check after the last different price.
+                    (SELECT MIN(x.ts) FROM observations x WHERE x.retailer=p.retailer AND x.item_id=p.item_id
+                       AND x.store_id=p.store_id AND x.ts > COALESCE(
+                         (SELECT MAX(y.ts) FROM observations y WHERE y.retailer=p.retailer AND y.item_id=p.item_id
+                            AND y.store_id=p.store_id AND y.price IS NOT o.price), 0)) AS changed_at
              FROM predictions p
              JOIN items i ON i.retailer=p.retailer AND i.item_id=p.item_id
              LEFT JOIN stores s ON s.retailer=p.retailer AND s.store_id=p.store_id
@@ -94,7 +101,7 @@ def predictions():
     if ctype:
         sql += " AND i.ctype=?"
         params.append(ctype)
-    sql += f" ORDER BY {order} LIMIT ?"
+    sql += f") q ORDER BY {order} LIMIT ?"
     params.append(limit)
     out = db.rows(sql, params)
     for r in out:

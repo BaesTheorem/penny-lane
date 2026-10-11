@@ -155,6 +155,9 @@ h3 { margin: 22px 0 8px; font-family: var(--mono); font-size: 12px; font-weight:
 .alert b { color: var(--yellow); font-weight: 800; font-stretch: 80%; text-transform: uppercase; letter-spacing: .4px; }
 .alert .t { font-size: 13px; }
 
+/* ---- a list waiting on a new sort or filter ---- */
+#ranked.loading, #lists.loading { opacity: .4; pointer-events: none; }
+
 /* ---- empty ---- */
 .empty { border: 1px dashed var(--ink-3); padding: 26px 16px; text-align: center; color: var(--ink-2); font-size: 14px; }
 .empty i { font-size: 32px; display: block; margin: 0 auto 6px; color: var(--ink-3); }
