@@ -6,23 +6,45 @@ the store comes from the `sn` cookie, and sending `sn` on a cold session
 draws an Akamai 403, so warm the session with one request first. About 70
 requests in 15 minutes from one IP bought a block that lasted over 72
 minutes, so this lane is for verifying a short list, never for sweeping.
-Store numbers come from `sitemap/store0.xml` (the locator API is
-challenge-gated).
+Stores: `sitemap/store0.xml` is gone (404 since 2026-10, also for All the
+Places). The per-state directory `/Lowes-Stores/<State>/<ST>` still answers
+with every store number and city in the state, one request per state.
+Coordinates come from `lowes_stores.json` (an All the Places snapshot, see
+`scripts/lowes-stores.py`); the live directory adds stores opened since the
+snapshot. It cannot mark a store closed: it links one store per city, so a
+city with five stores shows one. The locator API is challenge-gated.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+from functools import cache
+from pathlib import Path
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, geocode_zip, miles, transport
+
+log = logging.getLogger("pennylane.lowes")
 
 WPD = "https://www.lowes.com/wpd/{item}/productdetail/{store}/Guest"
-SITEMAP = "https://www.lowes.com/sitemap/store0.xml"
+DIRECTORY = "https://www.lowes.com/Lowes-Stores/{name}/{st}"
+SNAPSHOT = Path(__file__).with_name("lowes_stores.json")
 JH = {"Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
       "Referer": "https://www.lowes.com/"}
-STORE_URL = re.compile(r"https://www\.lowes\.com/store/([A-Z]{2})-([^/<]+)/(\d+)")
+STORE_URL = re.compile(r"/store/([A-Z]{2})-([^/\"'<]+)/(\d+)")
+STATES = {"AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado",
+          "CT": "Connecticut", "DE": "Delaware", "DC": "District-Of-Columbia", "FL": "Florida", "GA": "Georgia",
+          "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+          "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts",
+          "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana",
+          "NE": "Nebraska", "NV": "Nevada", "NH": "New-Hampshire", "NJ": "New-Jersey", "NM": "New-Mexico",
+          "NY": "New-York", "NC": "North-Carolina", "ND": "North-Dakota", "OH": "Ohio", "OK": "Oklahoma",
+          "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode-Island", "SC": "South-Carolina", "SD": "South-Dakota",
+          "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+          "WV": "West-Virginia", "WI": "Wisconsin", "WY": "Wyoming"}
 
 
 class Lowes(Retailer):
@@ -30,6 +52,7 @@ class Lowes(Retailer):
     label = "Lowe's"
     gap = 4.0
     can_sweep = False
+    takes_point = True
 
     def __init__(self):
         self.s = requests.Session(impersonate="chrome")
@@ -47,21 +70,46 @@ class Lowes(Retailer):
             self.s.cookies.set("sn", str(store_id), domain=".lowes.com")
             self._store = store_id
 
-    @transport
-    def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
-        """The sitemap lists every store with state and city, no distance.
-        Filter to the two states around the zip; distance stays None and the
-        user picks stores by name in Settings."""
-        r = self.s.get(SITEMAP, headers={"Accept": "application/xml"}, timeout=25)
-        if r.status_code != 200:
-            raise LaneRetry(f"lowes sitemap {r.status_code}")
-        states = _states_for_zip(zip_code)
+    def stores_near(self, zip_code: str, radius: float = 25, lat=None, lon=None) -> list[Store]:
+        """Snapshot stores within the radius, plus any store the live state
+        directory shows that the snapshot does not have."""
+        if lat is None or lon is None:
+            lat, lon = geocode_zip(zip_code)
+        snap = _snapshot()
+        near = {sid: (st, miles(lat, lon, st["lat"], st["lon"])) for sid, st in snap.items()}
+        near = {sid: v for sid, v in near.items() if v[1] <= radius}
+        # States the circle touches: every state with a store within radius + 50 miles.
+        states = {st["state"] for st in snap.values() if miles(lat, lon, st["lat"], st["lon"]) <= radius + 50}
+        live: dict[str, tuple[str, str]] = {}
+        try:
+            for code in sorted(states):
+                live.update(self._directory(code))
+        except (LaneBlocked, LaneRetry) as e:
+            log.warning("lowes directory: %s; using the snapshot alone", e)
         out = []
-        for st, city, num in STORE_URL.findall(r.text):
-            if st in states:
-                out.append(Store(self.key, num, f"Lowe's of {city.replace('-', ' ')}", city=city.replace("-", " "),
-                                 state=st))
+        for sid, (st, dist) in near.items():
+            out.append(Store(self.key, sid, f"Lowe's of {st['city']}", st.get("address", ""), st["city"], st["state"],
+                             st.get("zip", ""), st["lat"], st["lon"], round(dist, 1)))
+        # Opened since the snapshot: no coordinates, so no distance; Settings lists them to pick by hand.
+        for sid, (code, city) in live.items():
+            if sid not in snap:
+                out.append(Store(self.key, sid, f"Lowe's of {city}", city=city, state=code))
         return out
+
+    @transport
+    def _directory(self, code: str) -> dict[str, tuple[str, str]]:
+        name = STATES.get(code)
+        if not name:
+            return {}
+        r = self.s.get(DIRECTORY.format(name=name, st=code), headers={"Accept": "text/html"}, timeout=25)
+        if r.status_code == 403:
+            raise LaneBlocked("lowes 403 on the store directory")
+        if r.status_code != 200:
+            raise LaneRetry(f"lowes directory {code} {r.status_code}")
+        found = {num.zfill(4): (st, city.replace("-", " ")) for st, city, num in STORE_URL.findall(r.text) if st == code}
+        if not found:
+            raise LaneRetry(f"lowes directory {code}: no stores in the page")
+        return found
 
     @transport
     def lookup(self, item_id: str, store_id: str) -> Observation | None:
@@ -112,12 +160,7 @@ class Lowes(Retailer):
             model=str(prod.get("modelId") or ""), url=prod.get("pdURL") or "", raw=pd)
 
 
-def _states_for_zip(zip_code: str) -> set[str]:
-    z = int((zip_code or "0")[:3] or 0)
-    # Coarse 3-digit prefix map for the Kansas City metro and neighbours.
-    if 640 <= z <= 658:
-        return {"MO", "KS"}
-    if 660 <= z <= 679:
-        return {"KS", "MO"}
-    return set()
 
+@cache
+def _snapshot() -> dict[str, dict]:
+    return json.loads(SNAPSHOT.read_text())["stores"]

@@ -17,7 +17,7 @@ import time
 
 from curl_cffi import requests
 
-from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, transport
+from .base import LaneBlocked, LaneRetry, Observation, Retailer, Store, geocode_zip, transport
 
 BASE = "https://dggo.dollargeneral.com/omni/api"
 H = {"Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9",
@@ -29,6 +29,7 @@ class DollarGeneral(Retailer):
     label = "Dollar General"
     gap = 1.0
     can_sweep = False
+    takes_point = True
 
     def __init__(self):
         self.s = requests.Session(impersonate="chrome")
@@ -64,7 +65,7 @@ class DollarGeneral(Retailer):
 
     def stores_near(self, zip_code: str, radius: float = 25, lat=None, lon=None) -> list[Store]:
         if lat is None or lon is None:
-            lat, lon = _geocode_zip(zip_code)
+            lat, lon = geocode_zip(zip_code)
         d = self._post("/store/search/inventory", {"latitude": lat, "longitude": lon, "radius": radius})
         out = []
         for st in (d.get("stores") or []) if isinstance(d, dict) else []:
@@ -109,12 +110,3 @@ class DollarGeneral(Retailer):
             brand=p.get("brand") or "", upc=upc.zfill(12) if upc else "", sku=str(p.get("sku") or ""),
             url=self.item_url(upc.lstrip("0") or upc), category=category, raw=p)
 
-
-def _geocode_zip(zip_code: str) -> tuple[float, float]:
-    """Zip centroid from the free Zippopotam service; cached by the caller's
-    config in practice (stores are refreshed rarely)."""
-    r = requests.get(f"https://api.zippopotam.us/us/{zip_code}", timeout=20)
-    if r.status_code != 200:
-        raise LaneRetry(f"geocode {zip_code}: {r.status_code}")
-    pl = r.json()["places"][0]
-    return float(pl["latitude"]), float(pl["longitude"])

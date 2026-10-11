@@ -18,7 +18,6 @@ from curl_cffi import requests
 from . import config, db
 from .retailers import registry
 from .retailers.base import LaneBlocked, LaneRetry
-from .retailers.dollargeneral import DollarGeneral
 
 log = logging.getLogger("pennylane.location")
 UA = {"User-Agent": "PennyLane/1.0 (personal penny tracker)"}
@@ -70,7 +69,7 @@ def _stores_near(lane, place: dict, radius: float) -> list:
     """One retry: a locator's first call after a token bootstrap can come back empty."""
     for attempt in (0, 1):
         try:
-            if isinstance(lane, DollarGeneral) and place.get("lat") is not None:
+            if lane.takes_point and place.get("lat") is not None:
                 return lane.stores_near(place["zip"], radius, lat=place["lat"], lon=place["lon"])
             return lane.stores_near(place["zip"], radius)
         except LaneRetry:
@@ -84,8 +83,8 @@ def relocate(place: dict, radius: float | None = None) -> dict:
     """Save the new home zip and rebuild the store list around it. Per lane:
     stores from the old area that are not watched are dropped, and the
     nearest stores become the watched set, as many as were watched before
-    (at least AUTO_WATCH). A lane with no distances
-    (Lowe's) keeps only the watched stores that are still in range. A lane
+    (at least AUTO_WATCH). A lane with no distances keeps
+    only the watched stores that are still in range. A lane
     with no locator (Walmart) is left alone."""
     cfg = config.load()
     cfg["zip"] = place["zip"]

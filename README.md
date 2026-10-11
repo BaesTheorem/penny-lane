@@ -52,7 +52,7 @@ Three parts:
 |---|---|---|
 | Home Depot GraphQL | price, `pricing.clearance`, `anchorStoreStatusType`, bopis quantity, store search, Special Values sweep | 0.5 s gap is fine; `pageSize` > 24 = 403; `products(itemIds)` above 12 ids = null; HTTP 206 = upstream hiccup, retry |
 | Dollar General omni API | price + qty by UPC, `pennyOrZeroPriceItem`, store search with per-store stock | token bootstrap + one F5 cookie request; no product search at all |
-| Lowe's `/wpd/` JSON | price, `priceTypeReason` (`_MD_` = markdown), on-hand qty, aisle | store via `sn` cookie after a warm-up; ~70 requests/15 min = 72+ min block |
+| Lowe's `/wpd/` JSON | price, `priceTypeReason` (`_MD_` = markdown), on-hand qty, aisle | store via `sn` cookie after a warm-up; ~70 requests/15 min = 72+ min block; stores: `lowes_stores.json` (All the Places snapshot, `scripts/lowes-stores.py`) for coordinates, plus the `/Lowes-Stores/<State>/<ST>` directory for stores opened since |
 | Walmart `__NEXT_DATA__` | price, `priceDisplayCodes.clearance`, UPC, pickup status | PerimeterX wall after ~25 requests; no store switching; `/store/` is walled on first hit |
 
 Everything above is third-party data: the ingesters quote it, nothing in it is

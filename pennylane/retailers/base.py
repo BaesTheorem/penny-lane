@@ -8,6 +8,7 @@ clearance, and how many are on the shelf. Adapters never write to the DB;
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
@@ -89,6 +90,8 @@ class Retailer:
     gap = 0.6
     # Whether a per-store clearance sweep exists for this lane.
     can_sweep = False
+    # Whether stores_near also takes lat=, lon= (a device position beats a zip centroid).
+    takes_point = False
 
     def stores_near(self, zip_code: str, radius: float = 25) -> list[Store]:
         raise NotImplementedError
@@ -116,3 +119,20 @@ class Retailer:
 
     def item_url(self, item_id: str) -> str:
         return ""
+
+
+def geocode_zip(zip_code: str) -> tuple[float, float]:
+    """Zip centroid from the free Zippopotam service."""
+    from curl_cffi import requests
+    r = requests.get(f"https://api.zippopotam.us/us/{zip_code}", timeout=20)
+    if r.status_code != 200:
+        raise LaneRetry(f"geocode {zip_code}: {r.status_code}")
+    pl = r.json()["places"][0]
+    return float(pl["latitude"]), float(pl["longitude"])
+
+
+def miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in miles."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 3958.8 * 2 * math.asin(math.sqrt(a))
