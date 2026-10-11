@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4f1e8">
+<title>Penny Lane</title>
+<link rel="stylesheet" href="static/app.css?v=6e209b4b8a">
+<link rel="icon" href="static/icon.png">
+</head>
+<body>
+<header class="mast">
+  <div class="mast-row">
+    <a class="brand" data-tab="home" href="#"><span class="coin">1<small>¢</small></span><span class="word">Penny&nbsp;Lane</span></a>
+    <span id="unseen" class="unseen hidden">0</span>
+    <button id="refreshBtn" class="icon-btn" title="Refresh"><i>refresh</i></button>
+    <button id="scanBtn" class="scan-btn" title="Scan a barcode"><i>barcode_scanner</i><span>Scan</span></button>
+  </div>
+  <div id="ticker" class="ticker"></div>
+</header>
+
+<main>
+  <section id="tab-home" class="tab">
+    <div id="alerts"></div>
+    <div class="sec-head"><span class="sec-no">01</span><h2>On the shelf, near a penny</h2></div>
+    <div class="filters" id="filters">
+      <label class="pick"><span>Retailer</span><select id="fRetailer"><option value="">All</option></select></label>
+      <label class="pick"><span>Store</span><select id="fStore"><option value="">All</option></select></label>
+      <label class="pick"><span>Type</span><select id="fType"><option value="">Any</option></select></label>
+      <label class="pick"><span>Stage</span><select id="fStage">
+        <option value="">Any</option><option value="penny">Penny</option><option value="imminent">Imminent</option>
+        <option value="late">Late</option><option value="early">Early</option></select></label>
+      <label class="pick"><span>Sort</span><select id="fSort">
+        <option value="score">Score</option><option value="msrp">MSRP</option>
+        <option value="savings">Savings</option><option value="recent">Newest price</option></select></label>
+    </div>
+    <div id="ranked"></div>
+  </section>
+
+  <section id="tab-scan" class="tab hidden">
+    <div class="sec-head"><span class="sec-no">02</span><h2>Check a tag</h2></div>
+    <p class="lede">Type or scan a UPC, the SKU from a Home Depot yellow tag, or a Lowe's item number. On the phone, the camera fills this in.</p>
+    <div class="scanbox">
+      <input id="scanInput" inputmode="numeric" placeholder="0 00000 00000 0" autocomplete="off">
+      <button id="scanCam" class="btn" title="Scan with the camera"><i>photo_camera</i></button>
+      <button id="scanGo" class="btn solid">Look up</button>
+    </div>
+    <div class="filters">
+      <label class="pick"><span>Retailer</span><select id="scanRetailer"><option value="">Any</option></select></label>
+      <label class="pick"><span>Store</span><select id="scanStore"><option value="">All watched</option></select></label>
+    </div>
+    <div id="scanOut"></div>
+  </section>
+
+  <section id="tab-lists" class="tab hidden">
+    <div class="sec-head"><span class="sec-no">03</span><h2>What the community found</h2></div>
+    <div class="filters">
+      <label class="pick"><span>Retailer</span><select id="lRetailer"><option value="">All</option></select></label>
+      <label class="pick"><span>Type</span><select id="lType"><option value="">Any</option></select></label>
+      <label class="pick"><span>Sort</span><select id="lSort">
+        <option value="recent">Recent</option><option value="retail">MSRP</option><option value="stocked">Stocked near me</option></select></label>
+    </div>
+    <div class="actions">
+      <button id="runSources" class="btn">Pull lists now</button>
+      <button id="runVerify" class="btn">Verify at my stores</button>
+    </div>
+    <div id="lists"></div>
+  </section>
+
+  <section id="tab-item" class="tab hidden"><div id="itemView"></div></section>
+
+  <section id="tab-settings" class="tab hidden">
+    <div class="sec-head"><span class="sec-no">04</span><h2>Settings</h2></div>
+    <div id="settings"></div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <a data-tab="home"><i>sell</i><span>Shelf</span></a>
+  <a data-tab="scan"><i>barcode_scanner</i><span>Scan</span></a>
+  <a data-tab="lists"><i>receipt_long</i><span>Lists</span></a>
+  <a data-tab="settings"><i>tune</i><span>Setup</span></a>
+</nav>
+<div id="snack" class="snack"></div>
+<div id="cam" class="cam hidden" role="dialog" aria-label="Barcode camera">
+  <video id="camVideo" playsinline muted></video>
+  <div class="cam-frame"></div>
+  <div class="cam-bar"><span id="camStatus">Point the camera at a barcode</span><button id="camClose" class="btn">Cancel</button></div>
+</div>
+<script>window.PENNY_STATIC = true; window.PENNY_BUILD = "dbf34030cb";</script>
+<script src="static/static-api.js?v=c62870b79d"></script>
+<script type="module" src="static/app.js?v=f8f58d010d"></script>
+</body>
+</html>
