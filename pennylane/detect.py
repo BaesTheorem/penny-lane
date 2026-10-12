@@ -62,8 +62,10 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
     if latest.get("clearance_price") is not None:
         score += 10
         reasons.append(f"clearance price ${latest['clearance_price']:.2f}")
-    orig = latest.get("original")
+    # A store on clearance drops "original", so fall back to the best known MSRP.
+    orig = db.msrp(retailer, item_id, latest)
     eff = latest.get("clearance_price") or price
+    off = None
     if orig and eff and orig > 0:
         off = 1 - eff / orig
         if off >= 0.7:
@@ -121,6 +123,15 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
         if on_shelf:
             score += 20
             reasons.append(f"{qty} on this shelf")
+
+    # ---- depth gate ----
+    # A penny report from another market says nothing about this store's ladder.
+    # Imminent needs local depth: half off MSRP, or two markdown steps seen here.
+    deep = (off is not None and off >= 0.5) or drops >= 2
+    if on_shelf and not deep and score >= 70:
+        score = 69
+        depth = f"{off:.0%} off" if off is not None else "discount unknown"
+        reasons.append(f"held below imminent: {depth}, {drops} markdown step(s) here")
 
     # ---- nothing to buy ----
     if not on_shelf:

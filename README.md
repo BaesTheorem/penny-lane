@@ -36,6 +36,9 @@ Three parts:
    the first markdown, markdown steps seen, "gone online but still on the
    shelf", and community reports joined to local stock. Nothing on the shelf
    caps the score at 20. A register price of $0.01 on a stocked shelf is 100.
+   A score stays below 70 ("imminent", the alert threshold) until the item
+   is at least 50% off MSRP or shows two markdown steps at that store. A
+   penny report from another market does not show the local markdown state.
 5. **Alerts**: a macOS banner for every new alert, and a **Discord DM the
    moment a penny with MSRP at or above `notify.discord.min_msrp` (default
    $100) is on a watched shelf**. MSRP is the lane's original price, else the
