@@ -32,7 +32,7 @@ targets:
       properties:
         CFBundleDisplayName: Penny Lane
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Light
