@@ -6,7 +6,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/Users/alexhedtke/.local/bin/mist-launch</string>
-    <string>/Users/alexhedtke/Documents/penny-lane/.venv/bin/python</string>
+    <string>/Users/alexhedtke/.local/libexec/procname/pennylane</string>
     <string>-m</string><string>pennylane.server</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/alexhedtke/Documents/penny-lane</string>
