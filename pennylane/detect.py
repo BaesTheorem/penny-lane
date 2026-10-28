@@ -3,8 +3,10 @@
 Every signal below is something a probe or a community page actually
 showed (see README "Signals"). Scores are 0-100 and only mean "rank me";
 the reasons list is what Alex reads. A confirmed penny on the shelf is 100
-by definition. Nothing on the shelf caps the score at 20 whatever the
-markdown state, because there is nothing to buy.
+by definition. A penny whose store count reads 0 is still a confirmed penny
+(95): stores often zero the count of a penny item in the system while it is
+still on the shelf. Away from a penny price, nothing on the shelf caps the
+score at 20 whatever the markdown state, because there is nothing to buy.
 
 Home Depot lore, held loosely: two ladders (.00 -> .06 -> .03 -> .01 over
 ~13 weeks, .00 -> .04 -> .02 -> .01 over ~7 weeks); PennyCentral's 2026
@@ -53,7 +55,12 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
             # just under a confirmed one.
             reasons.append("stock unknown: Dollar General hides counts on penny items")
             return _result(90, "penny", None, reasons, latest)
-        return _result(100 if on_shelf else 20, "penny" if on_shelf else "gone", None, reasons, latest)
+        if on_shelf:
+            return _result(100, "penny", None, reasons, latest)
+        # Stores often zero the system count of a penny item that is still on
+        # the shelf, so a 0 count does not mean gone.
+        reasons.append("store count reads 0: penny items are often zeroed while still on the shelf")
+        return _result(95, "penny", None, reasons, latest)
 
     # ---- clearance state ----
     if latest.get("store_status") == "CLEARANCE":

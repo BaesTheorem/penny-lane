@@ -99,8 +99,8 @@ def muted(name: str, category: str, cfg: dict) -> bool:
 
 
 def _class(a: dict) -> str:
-    """penny (confirmed: penny price and the store reports stock), flagged
-    (penny price, no stock data) or soon.
+    """penny (confirmed: store-level penny price with a stock report, any
+    count, 0 included), flagged (penny price, no stock data) or soon.
 
     Dollar General returns a chain-wide penny flag with no shelf count, so its
     pennies arrive with qty None and the same list at every store.
@@ -161,7 +161,7 @@ def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
         if g["msrp"]:
             line += f", MSRP ${g['msrp']:,.2f}"
         if g["qty"] is not None:
-            line += f", qty {g['qty']}"
+            line += f", qty {g['qty']}" + (" (system count, check the shelf)" if g["qty"] == 0 else "")
         if g.get("sku"):
             line += f", SKU {g['sku']}"
         lines.append(line)
