@@ -39,10 +39,14 @@ Three parts:
    A score stays below 70 ("imminent", the alert threshold) until the item
    is at least 50% off MSRP or shows two markdown steps at that store. A
    penny report from another market does not show the local markdown state.
-5. **Alerts**: a macOS banner for every new alert, and a **Discord DM the
-   moment a penny with MSRP at or above `notify.discord.min_msrp` (default
-   $100) is on a watched shelf**. MSRP is the lane's original price, else the
-   retail price the community feed recorded.
+5. **Alerts**: a macOS banner for every new alert, and a **Discord DM for
+   confirmed pennies only**, at any MSRP: a store-level $0.01 price with a
+   stock report. A count of 0 still counts, because stores often zero the
+   system count of a penny item that is still on the shelf. Dollar General's
+   chain-wide flag, with no stock report, goes to the banner only. Beauty and
+   skincare items (`notify.mute`, default in `notify.py`) skip both the banner
+   and the DM. MSRP is the lane's original price, else the retail price the
+   community feed recorded.
 6. **Pulse** (`bin/penny pulse`, hourly under launchd): re-checks the hot set
    (reported items worth at least the floor, plus anything already scoring
    50+) at every watched Home Depot and Dollar General, then re-scores. Lowe's

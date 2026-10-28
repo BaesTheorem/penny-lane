@@ -29,8 +29,8 @@ DEFAULTS = {
     },
     "sources": {"enabled": True},
     "notify": {"enabled": True, "min_score": 70,
-               # Discord DM the moment a penny with MSRP >= min_msrp is on a watched shelf.
-               "discord": {"enabled": True, "min_msrp": 100, "token_file": "~/.claude/channels/discord/.env",
+               # Discord DM for confirmed pennies, any MSRP (notify.digest).
+               "discord": {"enabled": True, "token_file": "~/.claude/channels/discord/.env",
                            "env_file": "~/Documents/Exobrain harness/.env"}},
     # The hourly pulse re-checks the hot set: reported items worth >= pulse.min_msrp
     # and anything already scored >= pulse.min_score, at every watched store.
