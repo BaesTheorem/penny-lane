@@ -99,14 +99,15 @@ def muted(name: str, category: str, cfg: dict) -> bool:
 
 
 def _class(a: dict) -> str:
-    """penny (stock reported), flagged (penny price, no stock data) or soon.
+    """penny (confirmed: penny price and the store reports stock), flagged
+    (penny price, no stock data) or soon.
 
     Dollar General returns a chain-wide penny flag with no shelf count, so its
     pennies arrive with qty None and the same list at every store.
     """
     if a["kind"] != "penny_on_shelf":
         return "soon"
-    return "penny" if a["qty"] is not None else "flagged"
+    return "penny" if a.get("confirmed") else "flagged"
 
 
 def _group(alerts: list[dict]) -> list[dict]:
@@ -132,6 +133,10 @@ def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
     Counts are per item, not per item-store pair. A penny with no stock data
     is "flagged", never "on the shelf". Pennies with stock sort first, then
     flagged pennies, then by MSRP.
+
+    The banner covers every class. The Discord DM covers confirmed pennies
+    only, and a run with none sends no DM. Flagged and soon items stay in
+    the app and the banner.
     """
     groups = _group(alerts)
     n = {c: sum(g["cls"] == c for g in groups) for c in ("penny", "flagged", "soon")}
@@ -147,17 +152,19 @@ def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
            + (f" (MSRP ${best['msrp']:,.0f})" if best["msrp"] else ""),
            "http://localhost:5033",
            "\n".join(f"{g['cls']}: {g['name']} at {', '.join(g['stores'])}" for g in groups[:40]))
-    lines = [f"**Penny Lane**: {head}"]
-    tags = {"penny": "PENNY", "flagged": "FLAGGED", "soon": "soon"}
-    for g in groups[:top]:
-        line = f"- {tags[g['cls']]}: {g['name']} at {_where(g)} ({g['retailer']})"
+    confirmed = [g for g in groups if g["cls"] == "penny"]
+    if not confirmed:
+        return
+    lines = [f"**Penny Lane**: {len(confirmed)} new on the shelf at a penny"]
+    for g in confirmed[:top]:
+        line = f"- PENNY: {g['name']} at {_where(g)} ({g['retailer']})"
         if g["msrp"]:
             line += f", MSRP ${g['msrp']:,.2f}"
-        if g["cls"] == "penny":
+        if g["qty"] is not None:
             line += f", qty {g['qty']}"
-        if g["cls"] != "soon" and g.get("sku"):
+        if g.get("sku"):
             line += f", SKU {g['sku']}"
         lines.append(line)
-    if len(groups) > top:
-        lines.append(f"+{len(groups) - top} more in the app")
+    if len(confirmed) > top:
+        lines.append(f"+{len(confirmed) - top} more in the app")
     discord("\n".join(lines), cfg)

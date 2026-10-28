@@ -193,6 +193,8 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
             lt = r["latest"]
             fresh.append({"kind": kind, "name": name, "store": st["name"], "retailer": _label(st["retailer"]),
                           "msrp": full, "price": lt.get("price"), "qty": lt.get("qty"),
+                          "confirmed": kind == "penny_on_shelf"
+                          and ((lt.get("qty") or 0) > 0 or lt.get("in_stock") == 1),
                           "sku": it.get("sku"), "upc": it.get("upc"), "url": it.get("url") or "",
                           "score": r["score"]})
     if fresh and notify and cfg["notify"].get("enabled", True):
