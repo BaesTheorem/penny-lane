@@ -45,6 +45,10 @@ class DollarGeneral(Retailer):
         if r.status_code != 200:
             raise LaneRetry(f"dollargeneral user bootstrap {r.status_code}")
         d = r.json()
+        # The bootstrap sometimes answers 200 without tokens (seen 2026-11-06 12:49).
+        missing = [k for k in ("idToken", "appToken", "appSessionToken", "customerGuid") if not d.get(k)]
+        if missing:
+            raise LaneRetry(f"dollargeneral user bootstrap 200 without {', '.join(missing)}")
         self.s.get("https://dggo.dollargeneral.com/", headers={**H, "Accept": "text/html"}, timeout=25)
         dev = next((c.value for c in self.s.cookies.jar if c.name == "uniqueDeviceId"), "")
         self.hdr = {**H, "Content-Type": "application/json", "Authorization": "Bearer " + d["idToken"],
