@@ -30,7 +30,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSAppTransportSecurity</key>
@@ -40,12 +40,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Penny Lane uses your location once, when you tap Detect location, to find the stores near you.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera scans product barcodes on the shelf and the pairing QR code from the Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Penny Lane talks to the server on your Mac over the local network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Penny Lane uses your location once, when you tap Detect location, to find the stores near you.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
