@@ -8,7 +8,7 @@
   const LABELS = { homedepot: "Home Depot", lowes: "Lowe's", dollargeneral: "Dollar General", walmart: "Walmart" };
   const SHORT = { homedepot: "HD", lowes: "LOW", dollargeneral: "DG", walmart: "WMT" };
   const TYPES = {};
-  const STAGE = { penny: "On the shelf", imminent: "Imminent", late: "Late markdown", early: "Early markdown", watch: "Watching", gone: "Not on shelf" };
+  const STAGE = { penny: "Confirmed penny", likely: "Probably pennied", imminent: "Imminent", late: "Late markdown", early: "Early markdown", watch: "Watching", gone: "Not on shelf" };
 
   // The GitHub Pages copy sets PENNY_STATIC and loads static-api.js, which answers from published data.
   const STATIC = !!window.PENNY_STATIC;
@@ -38,17 +38,22 @@
   const dayAge = (ts) => { const a = daysOld(ts); return a === "today" ? `${day(ts)} (today)` : `${day(ts)} (${a} ago)`; };
   const snack = (msg) => { const s = $("#snack"); s.textContent = msg; s.classList.add("show"); setTimeout(() => s.classList.remove("show"), 2500); };
   const isPenny = (p) => p != null && p <= 0.01;
+  // What the register rings. A penny stage rings $0.01 whatever the API price says:
+  // Home Depot's API keeps the full price on a pennied item.
+  const PENNY_STAGE = { penny: 1, likely: 1 };
+  const effOf = (o) => (PENNY_STAGE[o.stage] ? 0.01 : (o.clearance_price ?? o.price));
+  const isPennyAlert = (k) => k === "penny_confirmed" || k === "penny_on_shelf";
   // Store names from DG already start with "DG"; do not print the retailer twice.
   const storeName = (retailer, name) => String(name || "").replace(new RegExp(`^${SHORT[retailer] || "@@"}\\s+`), "");
 
   // A price set like a shelf tag: superscript dollar sign, condensed numerals.
   const bigPrice = (v) => (v == null ? `<div class="now">&mdash;</div>` : `<div class="now"><sup>$</sup>${Number(v).toFixed(2)}</div>`);
   // Left column of every tag: the register price, the MSRP, and the dollars saved.
-  const priceBlock = (eff, msrp) => {
+  const priceBlock = (eff, msrp, stage) => {
     const pen = isPenny(eff);
     const save = msrp && eff != null && msrp - eff >= 0.01 ? msrp - eff : null;
     return `<div class="price-block">
-      ${pen ? `<div class="stamp">Rings up</div>` : ""}
+      ${pen ? `<div class="stamp">${stage === "likely" ? "Probably" : "Rings up"}</div>` : ""}
       ${bigPrice(eff)}
       ${msrp ? `<div class="msrp"><span>MSRP</span>${money(msrp)}</div>` : ""}
       ${save ? `<div class="save"><span>Save</span>${money(save)}<small>${Math.round((save / msrp) * 100)}% off</small></div>` : ""}
@@ -63,7 +68,7 @@
   const pennyWhen = (r) => {
     const parts = [];
     const p = r.penny || {};
-    if (p.since) parts.push(p.after ? `Pennied here between ${day(p.after)} and ${dayAge(p.since)}` : `$0.01 here since at least ${dayAge(p.since)}`);
+    if (p.since) parts.push(p.after ? `Pennied here between ${day(p.after)} and ${dayAge(p.since)}` : `Pennied here since at least ${dayAge(p.since)}`);
     if (r.first_reported) parts.push(`first reported ${dayAge(r.first_reported)}`);
     return parts.length ? `<div class="when"><i>event</i><span>${esc(parts.join(" · "))}</span></div>` : "";
   };
@@ -112,10 +117,10 @@
     fillSelect("#scanStore", state.stores.map((s) => [s.store_id, `${SHORT[s.retailer] || s.retailer} ${storeName(s.retailer, s.name)}`]), "All watched");
     const c = state.status.counts;
     const running = Object.entries(state.status.jobs || {}).filter(([, j]) => j.running).map(([k]) => k);
-    const pennies = await api("/api/predictions?stage=penny&limit=500").then((r) => r.length).catch(() => 0);
+    const pennies = await api("/api/predictions?stage=penny&count=1").then((r) => r.count ?? r.length).catch(() => 0);
     const lastRun = (state.status.runs || []).find((r) => r.finished);
     const bits = [
-      `<span><b>${pennies}</b> AT $0.01 NEAR YOU</span>`,
+      `<span><b>${pennies}</b> CONFIRMED PENNIES NEAR YOU</span>`,
       `<span>${state.stores.length} STORES WATCHED</span>`,
       `<span>${c.observations.toLocaleString()} PRICE CHECKS</span>`,
       `<span>${c.reports.toLocaleString()} COMMUNITY REPORTS</span>`,
@@ -140,13 +145,13 @@
     const t = take("home");
     busy("#ranked", true);
     const alerts = (await api("/api/alerts?limit=40")).filter((a) => !a.seen);
-    const pennies = alerts.filter((a) => a.kind === "penny_on_shelf").length;
+    const pennies = alerts.filter((a) => isPennyAlert(a.kind)).length;
     // Price out of the alert message ("..., clearance price $17.99; ...") for the left column.
     const priceOf = (m) => ((m || "").match(/clearance price (\$[\d.,]+)/) || (m || "").match(/register price is (\$[\d.,]+)/) || [])[1] || "";
     $("#alerts").innerHTML = alerts.length ? `<details class="alerts">
       <summary><i>notifications_active</i>${alerts.length} new alert${alerts.length === 1 ? "" : "s"}${pennies ? ` · ${pennies} at $0.01` : ""}<i class="chev">expand_more</i></summary>
       ${alerts.map((a) => `<div class="a-row" data-item="${esc(a.retailer)}/${esc(a.item_id)}">
-        <div><div class="a-price">${esc(a.kind === "penny_on_shelf" ? "$0.01" : priceOf(a.message) || "–")}</div><div class="a-kind">${a.kind === "penny_on_shelf" ? "Penny" : "Close"}</div></div>
+        <div><div class="a-price">${esc(/^penny/.test(a.kind) ? "$0.01" : priceOf(a.message) || "–")}</div><div class="a-kind">${isPennyAlert(a.kind) ? "Penny" : a.kind === "penny_likely" ? "Probable" : "Close"}</div></div>
         <div><div class="a-name">${esc(a.name || a.item_id)}</div><div class="a-where">${esc(SHORT[a.retailer] || a.retailer)} ${esc(storeName(a.retailer, a.store_name) || a.store_id)} · ${esc(ago(a.ts))}</div></div></div>`).join("")}
       </details>` : "";
     if (STATIC && window.pennyStatic.prefs().lat == null) {
@@ -171,12 +176,12 @@
   ["#fRetailer", "#fStore", "#fStage", "#fSort", "#fType"].forEach((s) => $(s).addEventListener("change", loadHome));
 
   function card(r) {
-    const eff = r.clearance_price ?? r.price;
+    const eff = effOf(r);
     const pen = isPenny(eff);
     const reasons = (() => { try { return JSON.parse(r.reasons || "[]"); } catch { return []; } })();
     const why = pen ? reasons.filter((x) => !/register price/.test(x)) : reasons;
     return `<article class="tag ${pen ? "penny" : ""} ${esc(r.stage)}" data-item="${esc(r.retailer)}/${esc(r.item_id)}">
-      ${priceBlock(eff, r.msrp)}
+      ${priceBlock(eff, r.msrp, r.stage)}
       <div class="body">
         <div class="score"><b>${r.score}</b>${meter(r.score)}<div class="stage-label">${esc(STAGE[r.stage] || r.stage)}</div></div>
         <div class="name">${esc(r.name || r.item_id)}</div>
@@ -193,7 +198,7 @@
     const others = r.others || [];
     if (!others.length) return "";
     const lines = others.slice(0, ALSO_MAX).map((o) => {
-      const eff = o.clearance_price ?? o.price;
+      const eff = effOf(o);
       const cls = isPenny(eff) ? "pen" : (o.qty > 0 ? "hit" : "");
       return `<div class="line ${cls}"><span class="st">${esc((storeName(r.retailer, o.store_name) || o.store_id).toUpperCase())}</span><span class="fill"></span><span>${eff == null ? "NO PRICE" : money(eff)} · QTY ${o.qty ?? "?"}</span></div>`;
     }).join("");
@@ -215,10 +220,10 @@
     catch (e) { $("#itemView").innerHTML = `<div class="empty"><i>help</i>${esc(e.message)}</div>`; return; }
     const it = d.item;
     const latest = d.latest.map((o) => {
-      const eff = o.clearance_price ?? o.price;
+      const eff = effOf(o);
       const pen = isPenny(eff);
       return `<article class="tag ${pen ? "penny" : ""}" style="cursor:default">
-        ${priceBlock(eff, o.msrp ?? o.original)}
+        ${priceBlock(eff, o.msrp ?? o.original, o.stage)}
         <div class="body">
           <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
           <div class="name">${esc(o.store_name || o.store_id)}</div>
@@ -274,10 +279,10 @@
     if (!d.ok) { $("#scanOut").innerHTML = `<div class="empty"><i>help</i>${esc(d.why)}</div>`; return; }
     $("#scanOut").innerHTML = d.results.map((o) => {
       if (o.error) return `<div class="empty" style="text-align:left"><b>${esc(LABELS[o.retailer] || o.retailer)} ${esc(o.store_id)}</b> · ${esc(o.error)}</div>`;
-      const eff = o.clearance_price ?? o.price;
+      const eff = effOf(o);
       const pen = isPenny(eff);
       return `<article class="tag ${pen ? "penny" : ""}" data-item="${esc(o.retailer)}/${esc(o.item_id)}">
-        ${priceBlock(eff, o.msrp ?? o.original)}
+        ${priceBlock(eff, o.msrp ?? o.original, o.stage)}
         <div class="body">
           <div class="score"><b>${o.score ?? "&ndash;"}</b>${meter(o.score)}<div class="stage-label">${esc(STAGE[o.stage] || "")}</div></div>
           <div class="name">${esc(o.name || o.item_id)}</div>

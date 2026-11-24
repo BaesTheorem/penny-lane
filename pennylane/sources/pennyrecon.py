@@ -39,7 +39,10 @@ class PennyRecon(Source):
                 reported_at=parse_ts(it.get("lastSeenAt") or it.get("lastSeen") or it.get("lastReportedAt") or it.get("updated")),
                 first_reported_at=parse_ts(it.get("firstReportedAt") or it.get("firstSeen")),
                 url=it.get("url") or it.get("homeDepotUrl") or "",
-                store_hint=(f"{reports} reports; " + hint) if hint else f"{reports} reports")
+                store_hint=(f"{reports} reports; " + hint) if hint else f"{reports} reports",
+                n_reports=int(reports) if str(reports).isdigit() else None,
+                places={"states": states} if isinstance(states, dict) and states else None,
+                status=str(it.get("likelihood") or it.get("tier") or ""))
 
 
 def _num(v):

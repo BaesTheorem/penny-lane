@@ -63,6 +63,12 @@ def predictions():
     stage = request.args.get("stage")
     limit = int(request.args.get("limit") or 200)
     sort = request.args.get("sort") or "score"
+    if request.args.get("count"):
+        # The ticker's number: no joins, no per-row lookups.
+        n = db.count("SELECT COUNT(DISTINCT retailer || '/' || item_id) FROM predictions WHERE score>=? AND stage=?"
+                     if stage else "SELECT COUNT(DISTINCT retailer || '/' || item_id) FROM predictions WHERE score>=?",
+                     (min_score, stage) if stage else (min_score,))
+        return jsonify(count=n)
     # group=item: one row per item, its best store by the chosen sort, the other stores under `others`.
     group = request.args.get("group") == "item"
     # NULLs sort last: an unknown price or MSRP is not a $0 one.
@@ -70,26 +76,27 @@ def predictions():
              "savings": "savings DESC NULLS LAST, score DESC",
              "recent": "changed_at DESC NULLS LAST, score DESC"}.get(sort, "score DESC")
     ctype = request.args.get("ctype")
-    sql = """SELECT q.*, ROUND(q.msrp - COALESCE(q.clearance_price, q.price), 2) AS savings FROM (
-             SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
-                    o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
-                    COALESCE(o.original,
-                             (SELECT MAX(x.original) FROM observations x
-                                WHERE x.retailer=p.retailer AND x.item_id=p.item_id),
-                             (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
-                                AND (r.item_id=p.item_id OR (i.sku<>'' AND r.sku=i.sku) OR (i.upc<>'' AND r.upc=i.upc))),
-                             CASE WHEN o.price > 0.01 AND o.clearance_price IS NULL THEN o.price END) AS msrp,
-                    -- When this store's current price started: the first check after the last different price.
+    # The price-start lookup costs a nested scan per row, so only the sort that needs it pays.
+    changed = """                    -- When this store's current price started: the first check after the last different price.
                     (SELECT MIN(x.ts) FROM observations x WHERE x.retailer=p.retailer AND x.item_id=p.item_id
                        AND x.store_id=p.store_id AND x.ts > COALESCE(
                          (SELECT MAX(y.ts) FROM observations y WHERE y.retailer=p.retailer AND y.item_id=p.item_id
-                            AND y.store_id=p.store_id AND y.price IS NOT o.price), 0)) AS changed_at
+                            AND y.store_id=p.store_id AND y.price IS NOT o.price), 0))""" if sort == "recent" else "NULL"
+    sql = """SELECT q.*, ROUND(q.msrp - CASE WHEN q.stage IN ('penny','likely') THEN 0.01
+                                             ELSE COALESCE(q.clearance_price, q.price) END, 2) AS savings FROM (
+             SELECT p.*, i.name, i.brand, i.upc, i.sku, i.url, i.ctype, i.category, s.name AS store_name,
+                    o.price, o.original, o.clearance_price, o.qty, o.promo, o.store_status, o.ts AS observed_at,
+                    COALESCE(o.original, i.max_original,
+                             (SELECT MAX(r.retail) FROM reports r WHERE r.retailer=p.retailer
+                                AND (r.item_id=p.item_id OR (i.sku<>'' AND r.sku=i.sku) OR (i.upc<>'' AND r.upc=i.upc))),
+                             CASE WHEN o.price > 0.01 AND o.clearance_price IS NULL THEN o.price END) AS msrp,
+{changed} AS changed_at
              FROM predictions p
              JOIN items i ON i.retailer=p.retailer AND i.item_id=p.item_id
              LEFT JOIN stores s ON s.retailer=p.retailer AND s.store_id=p.store_id
              LEFT JOIN observations o ON o.id = (SELECT id FROM observations
                    WHERE retailer=p.retailer AND item_id=p.item_id AND store_id=p.store_id ORDER BY ts DESC LIMIT 1)
-             WHERE p.score>=?"""
+             WHERE p.score>=?""".replace("{changed}", changed)
     params: list = [min_score]
     if retailer:
         sql += " AND p.retailer=?"

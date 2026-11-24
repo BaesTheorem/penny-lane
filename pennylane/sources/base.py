@@ -33,6 +33,11 @@ class Report:
     first_reported_at: float | None = None
     url: str = ""
     store_hint: str = ""
+    # The list's own evidence: report count, where ({"states": {ST: n}, "cities": {ST: {city: n}}}),
+    # and its status word (RebelDealz "Confirmed" / "Reported", PennyRecon's tier).
+    n_reports: int | None = None
+    places: dict | None = None
+    status: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)

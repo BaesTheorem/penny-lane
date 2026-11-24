@@ -40,7 +40,8 @@ CREATE INDEX IF NOT EXISTS obs_ts ON observations(ts);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY, source TEXT NOT NULL, retailer TEXT, item_id TEXT,
   sku TEXT, upc TEXT, name TEXT, price REAL, retail REAL, reported_at REAL, url TEXT,
-  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE, ctype TEXT, first_reported_at REAL);
+  store_hint TEXT, fetched_at REAL, key TEXT UNIQUE, ctype TEXT, first_reported_at REAL,
+  n_reports INTEGER, places TEXT, status TEXT);
 CREATE INDEX IF NOT EXISTS reports_item ON reports(retailer, item_id);
 CREATE INDEX IF NOT EXISTS reports_upc ON reports(upc);
 CREATE TABLE IF NOT EXISTS predictions (
@@ -85,11 +86,22 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE reports ADD COLUMN ctype TEXT")
     if "first_reported_at" not in cols:
         conn.execute("ALTER TABLE reports ADD COLUMN first_reported_at REAL")
+    # What the list itself says about its evidence: how many reports, where
+    # (JSON {"states": {ST: n}, "cities": {ST: {city: n}}}), and its own status word.
+    for col, kind in (("n_reports", "INTEGER"), ("places", "TEXT"), ("status", "TEXT")):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE reports ADD COLUMN {col} {kind}")
     icols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
     for col in ("category", "ctype"):
         if col not in icols:
             conn.execute(f"ALTER TABLE items ADD COLUMN {col} TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS items_ctype ON items(ctype)")
+    if "max_original" not in icols:
+        # The highest "original" price any check returned for the item. Kept on the item row
+        # because MAX(original) over 2.7M observations cost 23 s per list load (2026-11-24).
+        conn.execute("ALTER TABLE items ADD COLUMN max_original REAL")
+        conn.execute("""UPDATE items SET max_original=(SELECT MAX(o.original) FROM observations o
+                        WHERE o.retailer=items.retailer AND o.item_id=items.item_id)""")
     scols = {r[1] for r in conn.execute("PRAGMA table_info(stores)")}
     if "published" not in scols:
         # On the public site (publish.py): the metro set, chosen apart from what Alex watches.
@@ -129,8 +141,8 @@ def record(obs: Observation) -> None:
     with tx() as c:
         ctype = classify(obs.name, obs.category, obs.retailer)
         c.execute(
-            """INSERT INTO items(retailer,item_id,upc,sku,model,name,brand,url,dept,category,ctype,first_seen,last_seen)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO items(retailer,item_id,upc,sku,model,name,brand,url,dept,category,ctype,first_seen,last_seen,max_original)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(retailer,item_id) DO UPDATE SET
                upc=COALESCE(NULLIF(excluded.upc,''),items.upc), sku=COALESCE(NULLIF(excluded.sku,''),items.sku),
                model=COALESCE(NULLIF(excluded.model,''),items.model), name=COALESCE(NULLIF(excluded.name,''),items.name),
@@ -138,9 +150,10 @@ def record(obs: Observation) -> None:
                dept=COALESCE(NULLIF(excluded.dept,''),items.dept),
                category=COALESCE(NULLIF(excluded.category,''),items.category),
                ctype=CASE WHEN excluded.category<>'' OR items.ctype IS NULL OR items.ctype IN ('other','tools') THEN excluded.ctype ELSE items.ctype END,
-               last_seen=excluded.last_seen""",
+               last_seen=excluded.last_seen,
+               max_original=NULLIF(MAX(COALESCE(items.max_original,0), COALESCE(excluded.max_original,0)), 0)""",
             (obs.retailer, obs.item_id, obs.upc, obs.sku, obs.model, obs.name, obs.brand, obs.url,
-             obs.dept, obs.category, ctype, obs.ts, obs.ts))
+             obs.dept, obs.category, ctype, obs.ts, obs.ts, obs.original))
         c.execute(
             """INSERT INTO observations(retailer,item_id,store_id,ts,price,original,clearance_price,
                promo,qty,in_stock,discontinued,online_status,store_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -152,19 +165,26 @@ def record(obs: Observation) -> None:
 
 def add_report(source: str, key: str, **f) -> bool:
     """Insert a community report; returns True when it is new."""
+    places = json.dumps(f["places"]) if f.get("places") else None
     with tx() as c:
         cur = c.execute(
             """INSERT OR IGNORE INTO reports(source,key,retailer,item_id,sku,upc,name,price,retail,reported_at,
-               url,store_hint,fetched_at,ctype,first_reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               url,store_hint,fetched_at,ctype,first_reported_at,n_reports,places,status)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (source, key, f.get("retailer"), f.get("item_id"), f.get("sku"), f.get("upc"),
              f.get("name"), f.get("price"), f.get("retail"), f.get("reported_at"), f.get("url"),
              f.get("store_hint"), time.time(), classify(f.get("name") or "", "", f.get("retailer") or ""),
-             f.get("first_reported_at")))
+             f.get("first_reported_at"), f.get("n_reports"), places, f.get("status") or None))
         if cur.rowcount == 0:
-            # Existing row: refresh what moves (last seen) and fill what was missing.
+            # Existing row: refresh what moves (last seen, report counts, places) and fill what was missing.
             c.execute("""UPDATE reports SET reported_at=COALESCE(?, reported_at), retail=COALESCE(retail, ?),
-                         first_reported_at=COALESCE(first_reported_at, ?), fetched_at=? WHERE key=?""",
-                      (f.get("reported_at"), f.get("retail"), f.get("first_reported_at"), time.time(), key))
+                         first_reported_at=COALESCE(first_reported_at, ?), fetched_at=?,
+                         store_hint=COALESCE(NULLIF(?, ''), store_hint), n_reports=COALESCE(?, n_reports),
+                         places=COALESCE(?, places), status=COALESCE(?, status),
+                         item_id=COALESCE(NULLIF(item_id, ''), ?) WHERE key=?""",
+                      (f.get("reported_at"), f.get("retail"), f.get("first_reported_at"), time.time(),
+                       f.get("store_hint") or "", f.get("n_reports"), places, f.get("status") or None,
+                       f.get("item_id") or "", key))
         return cur.rowcount > 0
 
 
@@ -188,8 +208,9 @@ def add_alert(kind, retailer, item_id, store_id, message, score) -> int:
 
 
 def recent_alert_exists(kind, retailer, item_id, store_id, within_s=86400 * 3) -> bool:
-    """A penny is the last markdown, so a penny_on_shelf alert never repeats."""
-    since = 0 if kind == "penny_on_shelf" else time.time() - within_s
+    """A penny is the last markdown, so a penny alert (penny_confirmed,
+    penny_likely, and penny_on_shelf from before 2026-11-24) never repeats."""
+    since = 0 if kind.startswith("penny") else time.time() - within_s
     row = connect().execute(
         "SELECT 1 FROM alerts WHERE kind=? AND retailer=? AND item_id=? AND store_id=? AND ts>? LIMIT 1",
         (kind, retailer, item_id, store_id, since)).fetchone()
@@ -307,10 +328,9 @@ def msrp(retailer, item_id, latest: dict | None = None) -> float | None:
     The current price counts only when it is not a clearance price."""
     if latest and latest.get("original"):
         return float(latest["original"])
-    row = one("SELECT MAX(original) m FROM observations WHERE retailer=? AND item_id=?", (retailer, item_id))
-    if row and row.get("m"):
-        return float(row["m"])
     it = item(retailer, item_id) or {}
+    if it.get("max_original"):
+        return float(it["max_original"])
     row = one("""SELECT MAX(retail) m FROM reports WHERE retailer=? AND (item_id=? OR (?<>'' AND sku=?) OR (?<>'' AND upc=?))""",
               (retailer, item_id, it.get("sku") or "", it.get("sku") or "", it.get("upc") or "", it.get("upc") or ""))
     if row and row.get("m"):
@@ -330,7 +350,10 @@ def hot_items(retailer, min_msrp: float, min_score: int) -> list[str]:
                   "((r.sku<>'' AND i.sku=r.sku) OR (r.upc<>'' AND i.upc=r.upc)) WHERE r.retailer=? AND COALESCE(r.retail,0)>=?",
                   (retailer, min_msrp)):
         ids.add(r["item_id"])
-    for r in rows("SELECT DISTINCT item_id FROM predictions WHERE retailer=? AND score>=? AND stage<>'gone'",
+    # A penny state is the end of the ladder: it does not change by the hour, so
+    # penny and likely pairs wait for the 4x-daily verify unless the MSRP floor has them.
+    for r in rows("""SELECT DISTINCT item_id FROM predictions WHERE retailer=? AND score>=?
+                     AND stage NOT IN ('gone','penny','likely')""",
                   (retailer, min_score)):
         ids.add(r["item_id"])
     if retailer == "dollargeneral":
@@ -364,22 +387,101 @@ def reclassify_all() -> dict:
     return {"items": n, "reports": m}
 
 
+def penny_obs(retailer: str, o: dict) -> bool:
+    """True when one observation shows the penny state.
+
+    A lane that reads a store-level price shows $0.01 (Dollar General sets it
+    from the catalog's penny flag). Home Depot's API never returns $0.01: on
+    533 community-listed items it showed, at every store, status CLEARANCE with
+    the clearance price removed and the count at 0 or absent (3,064 store pairs,
+    against 150 on items no list had; measured 2026-11-24). That state is the
+    penny signature there.
+    """
+    price = o.get("price")
+    if price is not None and price <= 0.01:
+        return True
+    if retailer == "homedepot":
+        return (o.get("store_status") == "CLEARANCE" and o.get("clearance_price") is None
+                and not (o.get("qty") or 0) > 0 and o.get("in_stock") != 1)
+    return False
+
+
 def penny_window(retailer, item_id, store_id) -> dict:
-    """When this store's register went to $0.01, as far as our own checks
-    show: `since` is the first penny observation of the current penny run,
-    `after` the last higher price seen before it (None if we never saw one)."""
-    obs = rows("SELECT ts, price FROM observations WHERE retailer=? AND item_id=? AND store_id=? ORDER BY ts DESC",
+    """When this store went to the penny state, as far as our own checks show:
+    `since` is the first penny observation of the current penny run, `after`
+    the last check before it that was not a penny (None if we never saw one)."""
+    obs = rows("""SELECT ts, price, clearance_price, qty, in_stock, store_status FROM observations
+                  WHERE retailer=? AND item_id=? AND store_id=? ORDER BY ts DESC""",
                (retailer, item_id, store_id))
-    if not obs or obs[0]["price"] is None or obs[0]["price"] > 0.01:
+    if not obs or not penny_obs(retailer, obs[0]):
         return {"since": None, "after": None}
     since, after = obs[0]["ts"], None
     for o in obs[1:]:
-        if o["price"] is not None and o["price"] <= 0.01:
+        if penny_obs(retailer, o):
             since = o["ts"]
         else:
             after = o["ts"]
             break
     return {"since": since, "after": after}
+
+
+# PennyRecon rebuilds its file from PennyCentral's reports (same firstReportedAt to
+# the millisecond, sourceCount 1), so the two count as one list.
+LIST_FAMILY = {"pennyrecon": "pennycentral"}
+_home: dict[str, tuple[float, dict]] = {}
+
+
+def home_places(retailer: str) -> dict:
+    """{state: {city, ...}} of the watched stores, to find list reports from here."""
+    hit = _home.get(retailer)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    out: dict[str, set] = {}
+    for r in rows("SELECT DISTINCT state, city FROM stores WHERE retailer=? AND watched=1", (retailer,)):
+        if r["state"]:
+            out.setdefault(r["state"].upper(), set()).add((r["city"] or "").strip().lower())
+    _home[retailer] = (time.time(), out)
+    return out
+
+
+def community(retailer, item_id, window_s: float = 45 * 86400) -> dict:
+    """What every community list says about one item, merged.
+
+    `lists` counts independent lists (see LIST_FAMILY), `reports` is the largest
+    report count any list gives, `states` the number of states with a report,
+    `local` the reports from the watched stores' own states, `cities` the
+    watched stores' own cities a list names. Empty dict when no list has it.
+    """
+    it = item(retailer, item_id) or {}
+    reps = rows("SELECT * FROM reports WHERE retailer=? AND (item_id=? OR sku=? OR upc=?) AND fetched_at>?",
+                (retailer, item_id, it.get("sku") or "-", it.get("upc") or "-", time.time() - window_s))
+    if not reps:
+        return {}
+    states: dict[str, int] = {}
+    cities: dict[str, dict] = {}
+    n = 0
+    for r in reps:
+        n = max(n, r.get("n_reports") or 0)
+        try:
+            pl = json.loads(r.get("places") or "{}")
+        except ValueError:
+            pl = {}
+        for st, c in (pl.get("states") or {}).items():
+            states[st] = max(states.get(st, 0), int(c or 0))
+        for st, cs in (pl.get("cities") or {}).items():
+            if isinstance(cs, dict):
+                cities.setdefault(st, {}).update(cs)
+    home = home_places(retailer)
+    sources = sorted({r["source"] for r in reps})
+    return {
+        "sources": sources, "lists": len({LIST_FAMILY.get(s, s) for s in sources}),
+        "reports": max(n, sum(states.values())), "states": len(states),
+        "local": {st: states[st] for st in home if states.get(st)},
+        "cities": sorted(c for st, names in home.items() for c in (cities.get(st) or {}) if c.strip().lower() in names),
+        "newest": max((r.get("reported_at") or r.get("fetched_at") or 0) for r in reps),
+        "listed_confirmed": any((r.get("status") or "").lower() == "confirmed" for r in reps),
+        "rows": reps,
+    }
 
 
 def first_reported(retailer, item_id) -> float | None:

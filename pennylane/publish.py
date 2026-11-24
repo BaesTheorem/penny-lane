@@ -193,7 +193,9 @@ def _export_shelf_lane(cfg: dict, key: str, stores: list[dict], items: dict, his
                                    "qty": o["qty"], "store_status": o["store_status"], "ts": o["ts"],
                                    "score": sc.get("score"), "stage": sc.get("stage"), "reasons": sc.get("reasons", []),
                                    "penny": pw, "changed_at": _changed_at(key, iid, st["store_id"], o["price"])}
-            for h in db.history(key, iid, st["store_id"], limit=hist_n):
+            # A penny state is the end of the ladder: three rows show it, and the full
+            # run for 3,000 pairs doubled the file.
+            for h in db.history(key, iid, st["store_id"], limit=3 if sc.get("stage") in ("penny", "likely") else hist_n):
                 hist.append([st["store_id"], round(h["ts"]), h["price"], h["clearance_price"], h["qty"], h["store_status"]])
         if not per:
             continue
@@ -202,7 +204,7 @@ def _export_shelf_lane(cfg: dict, key: str, stores: list[dict], items: dict, his
 
 
 def _export_dg(stores: list[dict], items: dict) -> None:
-    """Dollar General: the register price is the chain's (from the stores we
+    """Dollar General: the penny flag is the chain's (from the stores we
     check, unnamed). Stock per published store comes from the locator, except
     for pennies, where the locator answers a placeholder."""
     if not stores:
@@ -230,10 +232,13 @@ def _export_dg(stores: list[dict], items: dict) -> None:
             # A DG penny is chain-wide, and the locator's stock for it is a placeholder
             # (5 at every store), so every published store gets the penny, stock unknown.
             for sid in pub:
+                # The stage and the reasons are the detector's (penny = the catalog flag and
+                # a community list agree; likely = the flag alone).
                 per[sid] = {"price": 0.01, "original": newest["original"], "clearance_price": None, "qty": None,
-                            "store_status": None, "ts": newest["ts"], "score": 90, "stage": "penny",
-                            "reasons": ["register price is $0.01 at the stores we check",
-                                        "stock unknown: Dollar General hides counts on penny items"],
+                            "store_status": None, "ts": newest["ts"], "score": best.get("score") or 70,
+                            "stage": best.get("stage") if best.get("stage") in ("penny", "likely") else "likely",
+                            "reasons": [r.replace(" at this store", " at the stores we check")
+                                        for r in best.get("reasons", [])],
                             "penny": penny_since, "changed_at": None, "chain_price": True}
         else:
             for sid, (qty, _status) in _dg_stock(lane, upc_id, center).items():

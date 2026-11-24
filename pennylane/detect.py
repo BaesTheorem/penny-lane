@@ -2,11 +2,22 @@
 
 Every signal below is something a probe or a community page actually
 showed (see README "Signals"). Scores are 0-100 and only mean "rank me";
-the reasons list is what Alex reads. A confirmed penny on the shelf is 100
-by definition. A penny whose store count reads 0 is still a confirmed penny
-(95): stores often zero the count of a penny item in the system while it is
-still on the shelf. Away from a penny price, nothing on the shelf caps the
-score at 20 whatever the markdown state, because there is nothing to buy.
+the reasons list is what Alex reads.
+
+Two penny stages, and what each one claims:
+
+  penny   CONFIRMED. Two kinds of source agree: the retailer's own record
+          shows the penny state at this store (db.penny_obs), and a community
+          list has the item as a penny. A store-level $0.01 price with a stock
+          report needs no list. Within the stage the score ranks the chance
+          that a unit is still there to find.
+  likely  PROBABLY PENNIED HERE. The store record shows the penny state and
+          no list has the item (yet). One source only.
+
+Neither retailer gives a shelf count for a penny (Home Depot zeroes it, Dollar
+General answers a placeholder), so no stage claims "on the shelf". Away from a
+penny state, nothing on the shelf caps the score at 20 whatever the markdown
+state, because there is nothing to buy.
 
 Home Depot lore, held loosely: two ladders (.00 -> .06 -> .03 -> .01 over
 ~13 weeks, .00 -> .04 -> .02 -> .01 over ~7 weeks); PennyCentral's 2026
@@ -46,21 +57,11 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
     qty = latest.get("qty")
     on_shelf = (qty or 0) > 0 or latest.get("in_stock") == 1
 
-    # ---- confirmed penny ----
-    if price is not None and price <= 0.01:
-        reasons.append(f"register price is ${price:.2f}")
-        if qty is None and latest.get("in_stock") is None:
-            # Dollar General reports a placeholder stock (5, status 3) for every penny
-            # item at every store, so the lane records "unknown". Still a penny: rank it
-            # just under a confirmed one.
-            reasons.append("stock unknown: Dollar General hides counts on penny items")
-            return _result(90, "penny", None, reasons, latest)
-        if on_shelf:
-            return _result(100, "penny", None, reasons, latest)
-        # Stores often zero the system count of a penny item that is still on
-        # the shelf, so a 0 count does not mean gone.
-        reasons.append("store count reads 0: penny items are often zeroed while still on the shelf")
-        return _result(95, "penny", None, reasons, latest)
+    # ---- penny state ----
+    if db.penny_obs(retailer, latest):
+        res = _penny(retailer, item_id, latest, hist, now)
+        if res:
+            return res
 
     # ---- clearance state ----
     if latest.get("store_status") == "CLEARANCE":
@@ -158,6 +159,72 @@ def score_item(retailer: str, item_id: str, store_id: str) -> dict | None:
         # HD lore: penny lands 7-13 weeks after the first markdown; mid-point.
         next_step = first_clr + 10 * WEEK
     return _result(min(score, 99), stage, next_step, reasons, latest)
+
+
+def _penny(retailer, item_id, latest, hist, now) -> dict | None:
+    """Score a pair whose latest observation shows the penny state. None means
+    "one unrepeated reading": the caller scores it as an ordinary item."""
+    ev = db.community(retailer, item_id, REPORT_WINDOW)
+    price, qty = latest.get("price"), latest.get("qty")
+    reasons: list[str] = []
+    if price is not None and price <= 0.01 and (qty is not None or latest.get("in_stock") is not None):
+        # A store-level price with a stock report: the register itself.
+        reasons.append(f"register price is ${price:.2f}")
+        if (qty or 0) > 0 or latest.get("in_stock") == 1:
+            return _result(100, "penny", None, reasons, latest)
+        reasons.append("store count reads 0: penny items are often zeroed while still on the shelf")
+        return _result(95, "penny", None, reasons, latest)
+
+    # The trailing run of penny observations, and what the store showed before it.
+    run = 0
+    for h in hist:  # newest first
+        if not db.penny_obs(retailer, h):
+            break
+        run += 1
+    before = hist[run:]
+    since = hist[run - 1]["ts"] if run else latest["ts"]
+    stocked = next((h for h in before if (h.get("qty") or 0) > 0), None)
+    ladder = next((h for h in before if h.get("clearance_price") is not None), None)
+
+    if retailer == "homedepot":
+        if run < 2 and before:
+            return None  # a single reading after other states: wait for the next check
+        reasons.append("store record shows the penny state: status CLEARANCE, clearance price removed, count zeroed")
+        score = 80 if ev else 55
+        if stocked and since - stocked["ts"] <= 30 * 86400:
+            score += 8 if ev else 10
+            reasons.append(f"{stocked['qty']} on this shelf {(since - stocked['ts']) / 86400:.0f}d before the count zeroed")
+        if ladder:
+            score += 0 if ev else 15
+            reasons.append(f"last clearance price here ${ladder['clearance_price']:.2f}")
+        if before and now - since <= 14 * 86400:
+            score += 5
+            reasons.append(f"went to the penny state {(now - since) / 86400:.0f}d ago")
+    else:
+        reasons.append("the retailer's catalog marks it a penny item at this store")
+        score = 85 if ev else 70
+        if before and now - since <= 14 * 86400:
+            score += 3
+            reasons.append(f"marked {(now - since) / 86400:.0f}d ago")
+
+    if not ev:
+        reasons.append("on no community penny list yet")
+        return _result(min(score, 85), "likely", None, reasons, latest)
+
+    age_d = (now - ev["newest"]) / 86400
+    line = f"pennied per {', '.join(ev['sources'])} ({age_d:.0f}d ago)"
+    if ev["reports"]:
+        line += f": {ev['reports']} reports" + (f" in {ev['states']} states" if ev["states"] else "")
+    reasons.append(line)
+    if ev["cities"]:
+        score += 6
+        reasons.append("reported in " + ", ".join(ev["cities"]))
+    elif ev["local"]:
+        score += 3
+        reasons.append("reported in " + ", ".join(f"{st} ({n})" for st, n in ev["local"].items()))
+    score += min(4, 2 * (ev["lists"] - 1)) + (2 if ev["listed_confirmed"] else 0) + (2 if ev["reports"] >= 20 else 0)
+    reasons.append("shelf count unknown: a penny item reads 0 or a placeholder in the store system")
+    return _result(min(score, 99), "penny", None, reasons, latest)
 
 
 def _result(score, stage, next_step, reasons, latest):

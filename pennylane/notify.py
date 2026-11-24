@@ -99,20 +99,14 @@ def muted(name: str, category: str, cfg: dict) -> bool:
 
 
 def _class(a: dict) -> str:
-    """penny (confirmed: store-level penny price with a stock report, any
-    count, 0 included), flagged (penny price, no stock data) or soon.
-
-    Dollar General returns a chain-wide penny flag with no shelf count, so its
-    pennies arrive with qty None and the same list at every store.
-    """
-    if a["kind"] != "penny_on_shelf":
-        return "soon"
-    return "penny" if a.get("confirmed") else "flagged"
+    """penny (confirmed: the store record and a community list agree), likely
+    (the store record alone shows the penny state) or soon. See detect.py."""
+    return {"penny_confirmed": "penny", "penny_likely": "likely"}.get(a["kind"], "soon")
 
 
 def _group(alerts: list[dict]) -> list[dict]:
     """One entry per item, with every store it alerted at, in rank order."""
-    order = {"penny": 0, "flagged": 1, "soon": 2}
+    order = {"penny": 0, "likely": 1, "soon": 2}
     groups: dict[tuple, dict] = {}
     for a in alerts:
         key = (_class(a), a["retailer"], a["name"])
@@ -130,22 +124,23 @@ def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
 
     A run can raise 40+ alerts at once (a new community list lands on many
     stores), so per-item sends flooded the banner history and the DM.
-    Counts are per item, not per item-store pair. A penny with no stock data
-    is "flagged", never "on the shelf". Pennies with stock sort first, then
-    flagged pennies, then by MSRP.
+    Counts are per item, not per item-store pair. No class says "on the
+    shelf": neither retailer gives a shelf count for a penny. Confirmed
+    pennies sort first, then probable ones, then by MSRP.
 
     The banner covers every class. The Discord DM covers confirmed pennies
-    only, and a run with none sends no DM. Flagged and soon items stay in
+    only, and a run with none sends no DM. Probable and soon items stay in
     the app and the banner.
     """
     groups = _group(alerts)
-    n = {c: sum(g["cls"] == c for g in groups) for c in ("penny", "flagged", "soon")}
+    n = {c: sum(g["cls"] == c for g in groups) for c in ("penny", "likely", "soon")}
     parts = []
     if n["penny"]:
-        parts.append(f"{n['penny']} new on the shelf at a penny")
-    if n["flagged"]:
-        parts.append(f"{n['flagged']} flagged at a penny (stock unknown)")
-    parts.append(f"{n['soon']} likely to go soon")
+        parts.append(f"{n['penny']} new confirmed penn{'y' if n['penny'] == 1 else 'ies'}")
+    if n["likely"]:
+        parts.append(f"{n['likely']} probably pennied (store record only)")
+    if n["soon"] or not parts:
+        parts.append(f"{n['soon']} likely to go soon")
     head = ", ".join(parts)
     best = groups[0]
     banner("Penny Lane", f"{head}. Top: {best['name']} at {_where(best)}"
@@ -155,13 +150,14 @@ def digest(alerts: list[dict], cfg: dict, top: int = 10) -> None:
     confirmed = [g for g in groups if g["cls"] == "penny"]
     if not confirmed:
         return
-    lines = [f"**Penny Lane**: {len(confirmed)} new on the shelf at a penny"]
+    lines = [f"**Penny Lane**: {len(confirmed)} new confirmed penn{'y' if len(confirmed) == 1 else 'ies'}"
+             " (store record and a community list agree; check the shelf)"]
     for g in confirmed[:top]:
         line = f"- PENNY: {g['name']} at {_where(g)} ({g['retailer']})"
         if g["msrp"]:
             line += f", MSRP ${g['msrp']:,.2f}"
-        if g["qty"] is not None:
-            line += f", qty {g['qty']}" + (" (system count, check the shelf)" if g["qty"] == 0 else "")
+        if (g["qty"] or 0) > 0:
+            line += f", qty {g['qty']}"
         if g.get("sku"):
             line += f", SKU {g['sku']}"
         lines.append(line)

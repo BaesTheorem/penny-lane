@@ -33,9 +33,11 @@ class PennyCentral(Source):
                 item_id = str(it.get("internetNumber") or it.get("itemId") or "")
                 if not (sku or item_id):
                     continue
-                locs = it.get("locations") or it.get("cityLocations") or []
-                if isinstance(locs, dict):
-                    locs = list(locs.keys())
+                # `locations` is {state: reports}; `cityLocations` is {state: {city: reports}}
+                # and covers only the reports that named a city.
+                by_state = it.get("locations") if isinstance(it.get("locations"), dict) else {}
+                by_city = it.get("cityLocations") if isinstance(it.get("cityLocations"), dict) else {}
+                locs = sorted(by_state, key=lambda k: -_int(by_state[k]))
                 yield Report(
                     source=self.key, key=f"{self.key}:{sku or item_id}", retailer=self.retailer,
                     item_id=item_id, sku=sku, upc=norm_upc(str(it.get("upc") or "")),
@@ -44,13 +46,23 @@ class PennyCentral(Source):
                                                      or it.get("firstReportedAt")),
                     first_reported_at=parse_ts(it.get("firstReportedAt") or it.get("dateAdded")),
                     url=it.get("homeDepotUrl") or "",
-                    store_hint=", ".join(str(x) for x in locs[:12]) if isinstance(locs, list) else "")
+                    store_hint=", ".join(f"{k}:{_int(by_state[k])}" for k in locs[:12]),
+                    n_reports=sum(_int(v) for v in by_state.values()) or None,
+                    places={"states": {k: _int(v) for k, v in by_state.items()}, "cities": by_city} if by_state else None,
+                    status=str(it.get("tier") or it.get("status") or ""))
             total = body.get("total") if isinstance(body, dict) else None
             if total is not None and page * 50 >= int(total):
                 return
             if len(items) < 50:
                 return
             page += 1
+
+
+def _int(v) -> int:
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _num(v):

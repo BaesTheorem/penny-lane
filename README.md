@@ -4,7 +4,8 @@ Per-store clearance and penny-item detection for Home Depot, Lowe's, Dollar
 General and Walmart. A "penny item" is a product whose register price has
 reached $0.01: the retailer's internal signal to pull it from the floor, which
 sometimes does not happen. This tool answers one question a community list
-cannot: **is it on the shelf at *my* store right now?**
+cannot: **has *my* store gone to the penny state, and is a unit likely to be
+there?**
 
 Three parts:
 
@@ -35,21 +36,43 @@ Three parts:
    store-level clearance status, percent off, price-ending ladder, weeks since
    the first markdown, markdown steps seen, "gone online but still on the
    shelf", and community reports joined to local stock. Nothing on the shelf
-   caps the score at 20. A register price of $0.01 on a stocked shelf is 100.
-   A score stays below 70 ("imminent", the alert threshold) until the item
+   caps the score at 20. A score stays below 70 ("imminent", the alert threshold) until the item
    is at least 50% off MSRP or shows two markdown steps at that store. A
    penny report from another market does not show the local markdown state.
-5. **Alerts**: a macOS banner for every new alert, and a **Discord DM for
-   confirmed pennies only**, at any MSRP: a store-level $0.01 price with a
-   stock report. A count of 0 still counts, because stores often zero the
-   system count of a penny item that is still on the shelf. Dollar General's
-   chain-wide flag, with no stock report, goes to the banner only. Beauty and
+5. **Penny stages.** Neither retailer shows a penny the way a register
+   does, so the detector reads each store's record for the penny state
+   (`db.penny_obs`) and then asks the community lists.
+   - Home Depot's API never returns $0.01 (0 of 2.08 million observations
+     through 2026-11-24, lowest price $0.88). A pennied item shows status
+     `CLEARANCE` with the clearance price removed and the count at 0 or
+     absent. That state covered 3,064 store pairs on community-listed items
+     and 150 on unlisted ones.
+   - Dollar General's catalog carries `pennyOrZeroPriceItem` per store, with
+     a placeholder stock count.
+   - **`penny` (confirmed)**: the store record shows the penny state and a
+     community list has the item. Two kinds of source agree. The score (80
+     to 99) ranks the chance that a unit is still there: stock seen at that
+     store shortly before the count zeroed, a recent change, reports from
+     the store's own state or city, the number of lists and reports.
+   - **`likely` (probably pennied here)**: the store record shows the penny
+     state and no list has the item. Score 55 to 85.
+   - No stage says "on the shelf". A penny count reads 0 or a placeholder.
+   The lists supply report counts per state and per city (PennyCentral
+   `locations` and `cityLocations`, PennyRecon `states`) and a status word
+   (RebelDealz). PennyRecon rebuilds its file from PennyCentral, so the two
+   count as one list.
+6. **Alerts**: a macOS banner for every new alert, and a **Discord DM for
+   confirmed pennies only**, at any MSRP. Probable pennies and items close
+   to a penny go to the banner only. A penny alert never repeats for the
+   same item and store. Beauty and
    skincare items (`notify.mute`, default in `notify.py`) skip both the banner
    and the DM. MSRP is the lane's original price, else the retail price the
    community feed recorded.
-6. **Pulse** (`bin/penny pulse`, hourly under launchd): re-checks the hot set
-   (reported items worth at least the floor, plus anything already scoring
-   50+) at every watched Home Depot and Dollar General, then re-scores. Lowe's
+7. **Pulse** (`bin/penny pulse`, hourly under launchd): re-checks the hot set
+   (reported items worth at least the floor, plus anything scoring 50+ that
+   is not yet in a penny stage) at every watched Home Depot and Dollar
+   General, then re-scores. A penny state does not change by the hour, so
+   those pairs wait for the scan that runs four times a day. Lowe's
    and Walmart are left out of the pulse because their request budgets cannot
    take an hourly pass.
 
@@ -118,7 +141,7 @@ reports, or Dollar General live) and checks every watched store.
 ## Design
 
 The UI is a shelf tag. Every result is a price tag: a condensed price block on
-the left (clearance yellow when the register rings $0.01, with the struck-out
+the left (clearance yellow when the item is in a penny stage, with the struck-out
 MSRP under it), a punched hole and a perforation, then the small print. Stock
 at each watched store prints as receipt lines. Type is Archivo (variable width,
 condensed for prices) and IBM Plex Mono for codes; ink is navy on paper white,

@@ -177,7 +177,9 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
         for r in ranked:
             kind = None
             if r["stage"] == "penny":
-                kind = "penny_on_shelf"
+                kind = "penny_confirmed"
+            elif r["stage"] == "likely":
+                kind = "penny_likely"
             elif r["score"] >= min_score:
                 kind = "imminent"
             if not kind or db.recent_alert_exists(kind, st["retailer"], r["item_id"], st["store_id"]):
@@ -193,10 +195,8 @@ def job_predict(cfg: dict, notify: bool = True) -> dict:
             lt = r["latest"]
             fresh.append({"kind": kind, "name": name, "store": st["name"], "retailer": _label(st["retailer"]),
                           "msrp": full, "price": lt.get("price"), "qty": lt.get("qty"),
-                          # Confirmed = a store-level penny price with a stock report of any
-                          # count (0 included). Dollar General's chain-wide flag has none.
-                          "confirmed": kind == "penny_on_shelf"
-                          and (lt.get("qty") is not None or lt.get("in_stock") is not None),
+                          # Confirmed = the store record AND a community list (detect.py).
+                          "confirmed": kind == "penny_confirmed",
                           "sku": it.get("sku"), "upc": it.get("upc"), "url": it.get("url") or "",
                           "score": r["score"]})
     if fresh and notify and cfg["notify"].get("enabled", True):

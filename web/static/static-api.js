@@ -22,7 +22,8 @@
     const h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
     return 3958.8 * 2 * Math.asin(Math.sqrt(h));
   };
-  const effPrice = (e) => e.clearance_price ?? e.price;
+  // A penny stage rings $0.01 whatever the API price says (see app.js effOf).
+  const effPrice = (e) => (e.stage === "penny" || e.stage === "likely" ? 0.01 : (e.clearance_price ?? e.price));
 
   async function ensure(force = false) {
     if (data && !force && Date.now() - loadedAt < REFRESH_MS) return data;
@@ -126,10 +127,10 @@
       .map((r) => {
         const id = `${r.retailer}/${r.item_id}/${r.store_id}/${r.stage}`;
         const penny = r.stage === "penny";
-        return { id, kind: penny ? "penny_on_shelf" : "imminent", retailer: r.retailer, item_id: r.item_id,
+        return { id, kind: penny ? "penny_confirmed" : "imminent", retailer: r.retailer, item_id: r.item_id,
           store_id: r.store_id, store_name: r.store_name, name: r.name, score: r.score,
           ts: (penny && r.penny.since) || r.changed_at || r.observed_at, seen: seen[id] ? 1 : 0,
-          message: penny ? "register price is $0.01" : `clearance price $${Number(effPrice(r) ?? 0).toFixed(2)}` };
+          message: penny ? "confirmed penny: the store record and a community list agree" : `clearance price $${Number(effPrice(r) ?? 0).toFixed(2)}` };
       }).sort((x, y) => y.ts - x.ts);
   }
   function markSeen() {
